@@ -1,0 +1,29 @@
+{
+  "name": "moneyflow-speckit-v2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:api": "node backend/src/server.js",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:e2e": "vitest run tests/e2e/full-user-journey.e2e.test.js",
+    "test:all": "npm run lint && npm run test && npm run test:e2e",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "format": "prettier --check .",
+    "sc005:eval": "node scripts/sc005-evaluate.mjs specs/001-fund-flow-tracker/usability-survey-template.csv",
+    "sc005:apply": "node scripts/sc005-report.mjs specs/001-fund-flow-tracker/usability-survey-template.csv --apply"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.8.1",
+    "vite": "^5.4.11"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "prettier": "^3.6.2",
+    "vitest": "^3.2.4"
+  }
+}

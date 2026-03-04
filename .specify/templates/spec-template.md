@@ -95,6 +95,12 @@
 - **FR-006**: System MUST authenticate users via [NEEDS CLARIFICATION: auth method not specified - email/password, SSO, OAuth?]
 - **FR-007**: System MUST retain user data for [NEEDS CLARIFICATION: retention period not specified]
 
+### Non-Functional Requirements *(mandatory)*
+
+- **NFR-001**: System MUST define user experience consistency requirements for user-facing flows, including loading, empty, error, and success states where applicable.
+- **NFR-002**: System MUST define measurable performance requirements (for example latency, throughput, render time, or resource usage) for critical flows.
+- **NFR-003**: System MUST define accessibility and interaction consistency expectations that align with existing product patterns.
+
 ### Key Entities *(include if feature involves data)*
 
 - **[Entity 1]**: [What it represents, key attributes without implementation]
@@ -113,3 +119,4 @@
 - **SC-002**: [Measurable metric, e.g., "System handles 1000 concurrent users without degradation"]
 - **SC-003**: [User satisfaction metric, e.g., "90% of users successfully complete primary task on first attempt"]
 - **SC-004**: [Business metric, e.g., "Reduce support tickets related to [X] by 50%"]
+- **SC-005**: [Performance metric tied to NFR-002, e.g., "p95 response time remains under 250ms at target load"]

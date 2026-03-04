@@ -1,0 +1,253 @@
+﻿openapi: 3.0.3
+info:
+  title: MoneyFlow Local API
+  version: 0.2.0
+servers:
+  - url: http://localhost:8787
+paths:
+  /api/snapshot:
+    get:
+      summary: Get latest account snapshot
+      responses:
+        '200':
+          description: Current snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSnapshot'
+    put:
+      summary: Initialize or replace initial deposit
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [initialBalanceYuan]
+              properties:
+                initialBalanceYuan:
+                  type: number
+                  format: double
+      responses:
+        '200':
+          description: Updated snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountSnapshot'
+        '400':
+          description: Validation error
+  /api/events:
+    get:
+      summary: List cashflow events
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [active, paused, deleted]
+      responses:
+        '200':
+          description: Events list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CashflowEvent'
+    post:
+      summary: Create event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CashflowEventCreateRequest'
+      responses:
+        '201':
+          description: Created event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CashflowEvent'
+        '400':
+          description: Validation error
+  /api/events/{id}:
+    patch:
+      summary: Update event fields
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CashflowEventPatchRequest'
+      responses:
+        '200':
+          description: Updated event
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CashflowEvent'
+        '404':
+          description: Event not found
+  /api/realtime-balance:
+    get:
+      summary: Get realtime balance tick
+      responses:
+        '200':
+          description: Realtime balance snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RealtimeBalanceTick'
+components:
+  schemas:
+    AccountSnapshot:
+      type: object
+      required: [initialBalanceYuan, currentBalanceYuan, timezone, updatedAt]
+      properties:
+        initialBalanceYuan:
+          type: number
+          format: double
+        currentBalanceYuan:
+          type: number
+          format: double
+        timezone:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+    CashflowEvent:
+      type: object
+      required: [id, title, eventKind, direction, amountYuan, effectiveAt, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+          minLength: 1
+          maxLength: 80
+        eventKind:
+          type: string
+          enum: [one_time, recurring]
+        direction:
+          type: string
+          enum: [inflow, outflow]
+        amountYuan:
+          type: number
+          format: double
+          minimum: 0.01
+        effectiveAt:
+          type: string
+          format: date-time
+        recurrenceUnit:
+          type: string
+          enum: [day, week, month]
+          nullable: true
+        recurrenceInterval:
+          type: integer
+          minimum: 1
+          nullable: true
+        dailyStartTime:
+          type: string
+          pattern: '^((00:(0[1-9]|[1-5]\d))|([01]\d|2[0-3]):[0-5]\d)$'
+          nullable: true
+        dailyEndTime:
+          type: string
+          pattern: '^([01]\d|2[0-4]):[0-5]\d$'
+          nullable: true
+        status:
+          type: string
+          enum: [active, paused, deleted]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    CashflowEventCreateRequest:
+      type: object
+      required: [title, eventKind, direction, amountYuan, effectiveAt]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 80
+        eventKind:
+          type: string
+          enum: [one_time, recurring]
+        direction:
+          type: string
+          enum: [inflow, outflow]
+        amountYuan:
+          type: number
+          format: double
+          minimum: 0.01
+        effectiveAt:
+          type: string
+          format: date-time
+        recurrenceUnit:
+          type: string
+          enum: [day, week, month]
+        recurrenceInterval:
+          type: integer
+          minimum: 1
+        dailyStartTime:
+          type: string
+          pattern: '^((00:(0[1-9]|[1-5]\d))|([01]\d|2[0-3]):[0-5]\d)$'
+        dailyEndTime:
+          type: string
+          pattern: '^([01]\d|2[0-4]):[0-5]\d$'
+    CashflowEventPatchRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 80
+        amountYuan:
+          type: number
+          format: double
+          minimum: 0.01
+        effectiveAt:
+          type: string
+          format: date-time
+        recurrenceUnit:
+          type: string
+          enum: [day, week, month]
+        recurrenceInterval:
+          type: integer
+          minimum: 1
+        dailyStartTime:
+          type: string
+          pattern: '^((00:(0[1-9]|[1-5]\d))|([01]\d|2[0-3]):[0-5]\d)$'
+        dailyEndTime:
+          type: string
+          pattern: '^([01]\d|2[0-4]):[0-5]\d$'
+        status:
+          type: string
+          enum: [active, paused, deleted]
+    RealtimeBalanceTick:
+      type: object
+      required: [timestamp, displayBalanceYuan, sourceSummary]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        displayBalanceYuan:
+          type: number
+          format: double
+        sourceSummary:
+          type: object
+          required: [activeRecurringCount, effectiveOneTimeCount]
+          properties:
+            activeRecurringCount:
+              type: integer
+            effectiveOneTimeCount:
+              type: integer
