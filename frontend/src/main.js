@@ -11,15 +11,16 @@ import {
   putSnapshot
 } from "./api-client.js";
 import { startBalancePolling } from "./balance-engine.js";
+import { filterRecentEvents } from "./event-visibility.js";
 import { formatEtaDuration, formatJumpByUnit, formatYuan, jumpUnitLabel } from "./formatters.js";
 import { estimateGoalEtaBySchedule } from "./goal-eta.js";
+import { buildJumpPalette } from "./jump-palette.js";
 
 const statusText = document.getElementById("statusText");
 const jumpTitle = document.getElementById("jumpTitle");
 const snapshotForm = document.getElementById("snapshotForm");
 const eventForm = document.getElementById("eventForm");
 const eventList = document.getElementById("eventList");
-const jumpConfigForm = document.getElementById("jumpConfigForm");
 const jumpUnitSelect = document.getElementById("jumpUnit");
 const recurringFields = document.getElementById("recurringFields");
 const eventKindSelect = document.getElementById("eventKind");
@@ -48,9 +49,11 @@ const goalEtaText = document.getElementById("goalEtaText");
 const menuButtons = Array.from(document.querySelectorAll(".menu-btn"));
 const panelPages = Array.from(document.querySelectorAll(".panel-page"));
 const clearLocalDataBtn = document.getElementById("clearLocalDataBtn");
+const recentShowSystemGeneratedInput = document.getElementById("recentShowSystemGenerated");
 
 const STAIR_STEP_COUNT = 14;
 const JUMP_UNIT_STORAGE_KEY = "moneyflow.ui.jumpUnit";
+const RECENT_SHOW_SYSTEM_EVENTS_STORAGE_KEY = "moneyflow.ui.recent.showSystemGenerated";
 const JUMP_UNIT_SECONDS = {
   second: 1,
   minute: 60,
@@ -82,6 +85,7 @@ let currentJumpUnit = "second";
 let currentGoalTarget = null;
 let goalCompletionNotifiedFor = null;
 let cachedEvents = [];
+let showSystemGeneratedRecentEvents = false;
 let editingEventId = null;
 let editingEventKind = null;
 
@@ -100,6 +104,29 @@ function saveJumpUnit(unit) {
     localStorage.setItem(JUMP_UNIT_STORAGE_KEY, unit);
   } catch {
     // ignore local storage failures
+  }
+}
+
+function getSavedSystemEventVisibility() {
+  try {
+    return localStorage.getItem(RECENT_SHOW_SYSTEM_EVENTS_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveSystemEventVisibility(value) {
+  try {
+    localStorage.setItem(RECENT_SHOW_SYSTEM_EVENTS_STORAGE_KEY, value ? "1" : "0");
+  } catch {
+    // ignore local storage failures
+  }
+}
+
+function applySystemEventVisibility(value) {
+  showSystemGeneratedRecentEvents = Boolean(value);
+  if (recentShowSystemGeneratedInput) {
+    recentShowSystemGeneratedInput.checked = showSystemGeneratedRecentEvents;
   }
 }
 
@@ -135,21 +162,20 @@ function renderJumpRhythm(delta, direction) {
   jumpStair.dataset.level = String(activeSteps);
   const lux = activeSteps / STAIR_STEP_COUNT;
   jumpStair.style.setProperty("--lux", String(lux));
-
-  let hueFrom = 208;
-  let hueTo = 252;
-  if (direction === "up") {
-    hueFrom = Math.round(138 + lux * 18);
-    hueTo = Math.round(166 + lux * 20);
-  } else if (direction === "down") {
-    hueFrom = Math.round(330 + lux * 6);
-    hueTo = Math.round(356 + lux * 4);
-  } else {
-    hueFrom = Math.round(208 + lux * 12);
-    hueTo = Math.round(252 + lux * 10);
-  }
-  jumpStair.style.setProperty("--stair-hue-from", String(hueFrom));
-  jumpStair.style.setProperty("--stair-hue-to", String(hueTo));
+  const palette = buildJumpPalette({
+    direction,
+    activeSteps,
+    totalSteps: STAIR_STEP_COUNT
+  });
+  jumpStair.style.setProperty("--stair-hue-from", String(palette.stairHueFrom));
+  jumpStair.style.setProperty("--stair-hue-to", String(palette.stairHueTo));
+  jumpDelta.style.setProperty("--delta-color-top", palette.deltaColorTop);
+  jumpDelta.style.setProperty("--delta-color-mid", palette.deltaColorMid);
+  jumpDelta.style.setProperty("--delta-color-accent", palette.deltaColorAccent);
+  jumpDelta.style.setProperty("--delta-color-bottom", palette.deltaColorBottom);
+  jumpDelta.style.setProperty("--delta-glow", palette.deltaGlow);
+  jumpDelta.style.setProperty("--delta-outline", palette.deltaOutline);
+  jumpDelta.style.setProperty("--delta-glint", palette.deltaGlint);
 
   children.forEach((node, index) => {
     node.classList.toggle("active", index < activeSteps);
@@ -462,13 +488,15 @@ function renderEventItem(event) {
   return li;
 }
 
-function renderEventList(events) {
+function renderEventList(events, { hasHiddenSystemEvents = false } = {}) {
   eventList.innerHTML = "";
 
   if (!events.length) {
     const empty = document.createElement("li");
     empty.className = "event-row";
-    empty.textContent = "暂无事件，请前往首页点击“快捷新增事件”开始记录。";
+    empty.textContent = hasHiddenSystemEvents
+      ? "暂无可见事件，系统自动事件已隐藏。可前往“设置”开启显示。"
+      : "暂无事件，请前往首页点击“快捷新增事件”开始记录。";
     eventList.appendChild(empty);
     return;
   }
@@ -489,12 +517,13 @@ async function loadGoalSettings() {
 async function reloadSummary() {
   const [snapshot, tick, events] = await Promise.all([getSnapshot(), getRealtimeBalance(), listEvents()]);
   cachedEvents = events;
+  const visibleEvents = filterRecentEvents(events, showSystemGeneratedRecentEvents);
   renderJumpSpotlight({
     displayBalanceYuan: snapshot.currentBalanceYuan,
     flowPerSecondYuan: tick.flowPerSecondYuan,
     events
   });
-  renderEventList(events);
+  renderEventList(visibleEvents, { hasHiddenSystemEvents: visibleEvents.length < events.length });
 }
 
 menuButtons.forEach((btn) => {
@@ -529,14 +558,12 @@ snapshotForm.addEventListener("submit", async (event) => {
   }
 });
 
-jumpConfigForm?.addEventListener("submit", async (event) => {
-  event.preventDefault();
+jumpUnitSelect?.addEventListener("change", async () => {
   const nextUnit = jumpUnitSelect?.value ?? "second";
   applyJumpUnit(nextUnit);
   saveJumpUnit(nextUnit);
   setStatus(`跳动维度已切换为 ${jumpUnitLabel(nextUnit)}`, "success");
   await reloadSummary();
-  switchPanel("homePanel");
 });
 
 goalForm?.addEventListener("submit", async (event) => {
@@ -570,10 +597,12 @@ clearLocalDataBtn?.addEventListener("click", async () => {
     await clearAllLocalData();
     try {
       localStorage.removeItem(JUMP_UNIT_STORAGE_KEY);
+      localStorage.removeItem(RECENT_SHOW_SYSTEM_EVENTS_STORAGE_KEY);
     } catch {
       // ignore local storage failures
     }
     applyJumpUnit("second");
+    applySystemEventVisibility(false);
     currentGoalTarget = null;
     goalCompletionNotifiedFor = null;
     if (goalTargetBalanceInput) {
@@ -585,6 +614,15 @@ clearLocalDataBtn?.addEventListener("click", async () => {
   } catch (error) {
     setStatus(error.message, "error");
   }
+});
+
+recentShowSystemGeneratedInput?.addEventListener("change", async () => {
+  const enabled = Boolean(recentShowSystemGeneratedInput?.checked);
+  applySystemEventVisibility(enabled);
+  saveSystemEventVisibility(enabled);
+  setStatus(enabled ? "近期事件将显示系统自动事件" : "近期事件已隐藏系统自动事件", "success");
+  await reloadSummary();
+  switchPanel("recentPanel");
 });
 
 eventKindSelect.addEventListener("change", () => {
@@ -680,6 +718,7 @@ eventForm.addEventListener("submit", async (event) => {
 async function init() {
   initJumpStair();
   applyJumpUnit(getSavedJumpUnit());
+  applySystemEventVisibility(getSavedSystemEventVisibility());
 
   try {
     setStatus("加载中...", "loading");

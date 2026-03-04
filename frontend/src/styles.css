@@ -310,26 +310,44 @@ body {
 }
 
 .jump-delta {
+  --delta-color-top: #fef3c7;
+  --delta-color-mid: #f8c15a;
+  --delta-color-accent: #f0a63a;
+  --delta-color-bottom: #f4a21d;
+  --delta-glow: rgba(245, 158, 11, 0.2);
+  --delta-outline: rgba(255, 251, 235, 0.1);
+  --delta-glint: rgba(255, 255, 255, 0.12);
   font-family: "Consolas", "Courier New", monospace;
   font-size: clamp(1.85rem, 6.1vw, 3.35rem);
   font-weight: 800;
   margin-top: 4px;
   line-height: 1.12;
-  color: #fef3c7;
-  text-shadow: 0 0 20px rgba(245, 158, 11, 0.38);
+  color: transparent;
+  background: linear-gradient(
+    180deg,
+    var(--delta-color-top) 6%,
+    var(--delta-color-mid) 36%,
+    var(--delta-color-accent) 64%,
+    var(--delta-color-bottom) 92%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  text-shadow:
+    0 0 12px var(--delta-glow),
+    0 0 1px var(--delta-outline),
+    0 1px 0 var(--delta-glint);
   animation: delta-pulse 1.5s ease-in-out infinite;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+  transition: background 260ms ease, text-shadow 260ms ease;
 }
 
 .jump-delta[data-direction="up"] {
-  color: #9af4be;
-  text-shadow: 0 0 20px rgba(22, 163, 74, 0.46);
+  color: transparent;
 }
 
 .jump-delta[data-direction="down"] {
-  color: #ffb6c5;
-  text-shadow: 0 0 20px rgba(225, 29, 72, 0.42);
+  color: transparent;
 }
 
 .jump-time {
@@ -378,8 +396,8 @@ body {
     hsl(var(--stair-hue-to) 78% calc(42% + var(--lux) * 8%))
   );
   box-shadow:
-    0 0 calc(8px + var(--lux) * 16px) hsla(var(--stair-hue-to) 88% 70% / calc(0.22 + var(--lux) * 0.45)),
-    0 0 calc(2px + var(--lux) * 6px) hsla(var(--stair-hue-from) 90% 78% / calc(0.2 + var(--lux) * 0.4));
+    0 0 calc(6px + var(--lux) * 10px) hsla(var(--stair-hue-to) 84% 68% / calc(0.14 + var(--lux) * 0.24)),
+    0 0 calc(1px + var(--lux) * 3px) hsla(var(--stair-hue-from) 86% 76% / calc(0.1 + var(--lux) * 0.2));
 }
 
 .jump-stair[data-direction="up"] .stair-step.active {
@@ -420,7 +438,7 @@ body {
     transform: scale(1);
   }
   50% {
-    transform: scale(1.03);
+    transform: scale(1.012);
   }
 }
 
@@ -577,6 +595,18 @@ button {
   color: #4b5f82;
   font-size: 0.88rem;
   line-height: 1.45;
+}
+
+.switch-label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.switch-label input[type="checkbox"] {
+  width: auto;
+  margin-top: 2px;
 }
 
 .data-clear-panel {

@@ -22,6 +22,8 @@ describe("ux state a11y", () => {
     expect(html).toContain('id="jumpStair"');
     expect(html).toContain('id="jumpTimestamp"');
     expect(html).toContain("<label");
+    expect(html).not.toContain(">保存配置<");
+    expect(html).not.toContain(">保存显示设置<");
     expect(html).toContain('data-target="homePanel"');
     expect(html).toContain('data-target="configPanel"');
     expect(html).toContain('data-target="snapshotPanel"');
