@@ -33,12 +33,31 @@ export function createSnapshotService({ snapshotRepository, eventRepository }) {
       return ensureSnapshot();
     },
     setInitialBalance(initialBalanceYuan, timezone = "Asia/Shanghai", now = new Date()) {
-      eventRepository.clearOneTimeEvents();
+      const events = eventRepository.listForBalance();
+      const contributionTick = computeBalanceTick({
+        initialBalanceYuan: 0,
+        events,
+        now
+      });
+      const contribution = Number(contributionTick.displayBalanceYuan ?? 0);
+      const nowIso = now.toISOString();
+      if (Math.abs(contribution) >= 0.0001) {
+        eventRepository.create({
+          title: "初始化对齐",
+          eventKind: "one_time",
+          direction: contribution >= 0 ? "outflow" : "inflow",
+          amountYuan: Math.abs(contribution),
+          effectiveAt: nowIso,
+          status: "active",
+          createdAt: nowIso,
+          updatedAt: nowIso
+        });
+      }
       snapshotRepository.upsertSnapshot({
         initialBalanceYuan,
         currentBalanceYuan: initialBalanceYuan,
         timezone,
-        updatedAt: now.toISOString()
+        updatedAt: nowIso
       });
       return ensureSnapshot();
     },

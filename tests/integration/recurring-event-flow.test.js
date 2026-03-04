@@ -9,7 +9,7 @@ describe("recurring event flow", () => {
     ({ baseUrl } = await useServer());
   });
 
-  it("creates recurring event and supports pause/delete/restore via patch", async () => {
+  it("creates recurring event and supports pause/delete/restore and hard delete", async () => {
     await fetch(`${baseUrl}/api/snapshot`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -57,5 +57,26 @@ describe("recurring event flow", () => {
 
     const tick3 = await (await fetch(`${baseUrl}/api/realtime-balance`)).json();
     expect(tick3.sourceSummary.activeRecurringCount).toBe(1);
+    expect(tick3.flowPerSecondYuan).toBeGreaterThan(0);
+
+    const patchDirectionRes = await fetch(`${baseUrl}/api/events/${created.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ direction: "outflow" })
+    });
+    expect(patchDirectionRes.status).toBe(200);
+    const patched = await patchDirectionRes.json();
+    expect(patched.direction).toBe("outflow");
+
+    const tick4 = await (await fetch(`${baseUrl}/api/realtime-balance`)).json();
+    expect(tick4.flowPerSecondYuan).toBeLessThan(0);
+
+    const hardDeleteRes = await fetch(`${baseUrl}/api/events/${created.id}`, {
+      method: "DELETE"
+    });
+    expect(hardDeleteRes.status).toBe(200);
+
+    const listAfterHardDelete = await (await fetch(`${baseUrl}/api/events`)).json();
+    expect(listAfterHardDelete.some((event) => event.id === created.id)).toBe(false);
   });
 });

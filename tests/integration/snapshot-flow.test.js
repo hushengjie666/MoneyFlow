@@ -21,7 +21,7 @@ describe("snapshot flow", () => {
     expect(body.initialBalanceYuan).toBe(10000);
   });
 
-  it("reinitializes snapshot, clears one-time events, keeps recurring events", async () => {
+  it("reinitializes snapshot and keeps existing events", async () => {
     await fetch(`${baseUrl}/api/snapshot`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -63,7 +63,9 @@ describe("snapshot flow", () => {
     expect(resetSnapshot.currentBalanceYuan).toBe(300);
 
     const events = await (await fetch(`${baseUrl}/api/events`)).json();
-    expect(events).toHaveLength(1);
-    expect(events[0].eventKind).toBe("recurring");
+    expect(events).toHaveLength(3);
+    expect(events.some((event) => event.eventKind === "one_time")).toBe(true);
+    expect(events.some((event) => event.eventKind === "recurring")).toBe(true);
+    expect(events.some((event) => event.title === "初始化对齐")).toBe(true);
   });
 });

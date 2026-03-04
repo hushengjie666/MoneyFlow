@@ -96,6 +96,29 @@ paths:
                 $ref: '#/components/schemas/CashflowEvent'
         '404':
           description: Event not found
+    delete:
+      summary: Permanently delete event
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, deleted]
+                properties:
+                  id:
+                    type: integer
+                  deleted:
+                    type: boolean
+        '404':
+          description: Event not found
   /api/realtime-balance:
     get:
       summary: Get realtime balance tick
@@ -131,7 +154,7 @@ components:
           type: integer
         title:
           type: string
-          minLength: 1
+          minLength: 0
           maxLength: 80
         eventKind:
           type: string
@@ -161,6 +184,13 @@ components:
         dailyEndTime:
           type: string
           pattern: '^([01]\d|2[0-4]):[0-5]\d$'
+          nullable: true
+        activeWeekdays:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
           nullable: true
         status:
           type: string
@@ -173,11 +203,11 @@ components:
           format: date-time
     CashflowEventCreateRequest:
       type: object
-      required: [title, eventKind, direction, amountYuan, effectiveAt]
+      required: [eventKind, direction, amountYuan, effectiveAt]
       properties:
         title:
           type: string
-          minLength: 1
+          minLength: 0
           maxLength: 80
         eventKind:
           type: string
@@ -204,12 +234,18 @@ components:
         dailyEndTime:
           type: string
           pattern: '^([01]\d|2[0-4]):[0-5]\d$'
+        activeWeekdays:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
     CashflowEventPatchRequest:
       type: object
       properties:
         title:
           type: string
-          minLength: 1
+          minLength: 0
           maxLength: 80
         amountYuan:
           type: number
@@ -230,6 +266,12 @@ components:
         dailyEndTime:
           type: string
           pattern: '^([01]\d|2[0-4]):[0-5]\d$'
+        activeWeekdays:
+          type: array
+          items:
+            type: integer
+            minimum: 1
+            maximum: 7
         status:
           type: string
           enum: [active, paused, deleted]

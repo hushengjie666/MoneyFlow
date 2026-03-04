@@ -28,9 +28,9 @@ describe("recurring proration", () => {
 
   it("only accrues in configured daily window", () => {
     const effective = new Date("2026-01-01T00:00:00.000Z");
-    const beforeWindow = new Date("2026-01-01T07:59:59.000Z");
-    const inWindow = new Date("2026-01-01T09:00:00.000Z");
-    const afterWindow = new Date("2026-01-01T18:00:00.000Z");
+    const beforeWindow = new Date("2025-12-31T23:59:59.000Z");
+    const inWindow = new Date("2026-01-01T01:00:00.000Z");
+    const afterWindow = new Date("2026-01-01T10:00:00.000Z");
 
     const event = {
       eventKind: "recurring",
@@ -51,5 +51,75 @@ describe("recurring proration", () => {
     expect(tickBefore.displayBalanceYuan).toBe(0);
     expect(tickIn.displayBalanceYuan).toBeGreaterThan(0);
     expect(tickAfter.displayBalanceYuan).toBe(90);
+  });
+
+  it("respects Asia/Shanghai daily window boundaries", () => {
+    const event = {
+      eventKind: "recurring",
+      direction: "inflow",
+      amountYuan: 3600,
+      effectiveAt: "2025-12-31T16:00:00.000Z",
+      recurrenceUnit: "day",
+      recurrenceInterval: 1,
+      dailyStartTime: "08:00",
+      dailyEndTime: "09:00",
+      status: "active"
+    };
+
+    const beforeLocalStart = new Date("2025-12-31T23:59:59.000Z");
+    const afterLocalStart = new Date("2026-01-01T00:00:01.000Z");
+
+    const tickBefore = computeBalanceTick({ initialBalanceYuan: 0, now: beforeLocalStart, events: [event] });
+    const tickAfter = computeBalanceTick({ initialBalanceYuan: 0, now: afterLocalStart, events: [event] });
+
+    expect(tickBefore.sourceSummary.activeRecurringCount).toBe(0);
+    expect(tickAfter.sourceSummary.activeRecurringCount).toBe(1);
+    expect(tickAfter.flowPerSecondYuan).toBeGreaterThan(0);
+  });
+
+  it("does not accrue on unselected weekdays", () => {
+    const event = {
+      eventKind: "recurring",
+      direction: "inflow",
+      amountYuan: 3600,
+      effectiveAt: "2026-01-05T00:00:00.000Z",
+      recurrenceUnit: "day",
+      recurrenceInterval: 1,
+      dailyStartTime: "08:00",
+      dailyEndTime: "09:00",
+      activeWeekdays: [1, 2, 3, 4, 5],
+      status: "active"
+    };
+
+    const saturdayDuringWindow = new Date("2026-01-10T00:30:00.000Z");
+    const mondayDuringWindow = new Date("2026-01-12T00:30:00.000Z");
+
+    const tickSaturday = computeBalanceTick({ initialBalanceYuan: 0, now: saturdayDuringWindow, events: [event] });
+    const tickMonday = computeBalanceTick({ initialBalanceYuan: 0, now: mondayDuringWindow, events: [event] });
+
+    expect(tickSaturday.flowPerSecondYuan).toBe(0);
+    expect(tickMonday.flowPerSecondYuan).toBeGreaterThan(0);
+  });
+
+  it("keeps monthly single-workday rate in a reasonable range", () => {
+    const event = {
+      eventKind: "recurring",
+      direction: "inflow",
+      amountYuan: 10000,
+      effectiveAt: "2026-01-06T00:00:00.000Z",
+      recurrenceUnit: "month",
+      recurrenceInterval: 1,
+      dailyStartTime: "00:01",
+      dailyEndTime: "23:59",
+      activeWeekdays: [1],
+      status: "active"
+    };
+
+    const mondayMidday = new Date("2026-01-12T04:00:00.000Z");
+    const tick = computeBalanceTick({ initialBalanceYuan: 0, now: mondayMidday, events: [event] });
+    const yuanPerHour = tick.flowPerSecondYuan * 3600;
+
+    expect(yuanPerHour).toBeGreaterThan(50);
+    expect(yuanPerHour).toBeLessThan(200);
   });
 });

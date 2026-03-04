@@ -31,6 +31,16 @@ export function createEventRoutes({ eventService }) {
 
     const eventIdMatch = url.pathname.match(/^\/api\/events\/(\d+)$/);
     if (eventIdMatch) {
+      const id = Number(eventIdMatch[1]);
+      if (req.method === "DELETE") {
+        const removed = eventService.removeEvent(id);
+        if (!removed) {
+          sendError(res, 404, "event not found");
+          return true;
+        }
+        sendJson(res, 200, { id, deleted: true });
+        return true;
+      }
       if (req.method !== "PATCH") {
         return false;
       }
@@ -41,7 +51,6 @@ export function createEventRoutes({ eventService }) {
           sendError(res, 400, validationError);
           return true;
         }
-        const id = Number(eventIdMatch[1]);
         const event = eventService.updateEvent(id, payload);
         if (!event) {
           sendError(res, 404, "event not found");

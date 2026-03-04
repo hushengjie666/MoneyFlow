@@ -7,6 +7,7 @@ import { createEventService } from "./services/event-service.js";
 import { createSnapshotRoutes } from "./routes/snapshot-routes.js";
 import { createEventRoutes } from "./routes/event-routes.js";
 import { createRealtimeRoutes } from "./routes/realtime-routes.js";
+import { createLocalDataRoutes } from "./routes/local-data-routes.js";
 import { createApiRouter } from "./routes/index.js";
 import { sendError } from "./lib/http.js";
 import { fileURLToPath } from "node:url";
@@ -26,7 +27,8 @@ export function createServer({ database = db } = {}) {
   const snapshotRoutes = createSnapshotRoutes({ snapshotService });
   const eventRoutes = createEventRoutes({ eventService });
   const realtimeRoutes = createRealtimeRoutes({ snapshotRepository, eventRepository });
-  const apiRouter = createApiRouter({ snapshotRoutes, eventRoutes, realtimeRoutes });
+  const localDataRoutes = createLocalDataRoutes({ snapshotRepository, eventRepository });
+  const apiRouter = createApiRouter({ snapshotRoutes, eventRoutes, realtimeRoutes, localDataRoutes });
 
   return http.createServer(async (req, res) => {
     try {

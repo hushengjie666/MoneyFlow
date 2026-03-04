@@ -37,13 +37,15 @@ describe("events recurring contract", () => {
         recurrenceUnit: "day",
         recurrenceInterval: 1,
         dailyStartTime: "08:00",
-        dailyEndTime: "17:00"
+        dailyEndTime: "17:00",
+        activeWeekdays: [1, 2, 3, 4, 5]
       })
     });
     expect(okRes.status).toBe(201);
     const body = await okRes.json();
     expect(body.dailyStartTime).toBe("08:00");
     expect(body.dailyEndTime).toBe("17:00");
+    expect(body.activeWeekdays).toEqual([1, 2, 3, 4, 5]);
   });
 
   it("rejects invalid daily time window", async () => {
@@ -60,6 +62,25 @@ describe("events recurring contract", () => {
         recurrenceInterval: 1,
         dailyStartTime: "18:00",
         dailyEndTime: "09:00"
+      })
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects recurring payload without any active weekdays", async () => {
+    const res = await fetch(`${baseUrl}/api/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventKind: "recurring",
+        direction: "inflow",
+        amountYuan: 500,
+        effectiveAt: new Date().toISOString(),
+        recurrenceUnit: "day",
+        recurrenceInterval: 1,
+        dailyStartTime: "08:00",
+        dailyEndTime: "17:00",
+        activeWeekdays: []
       })
     });
     expect(res.status).toBe(400);

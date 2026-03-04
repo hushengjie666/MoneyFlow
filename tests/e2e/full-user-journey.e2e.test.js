@@ -95,14 +95,16 @@ describe("e2e full user journey", () => {
     expect(delRes.status).toBe(200);
 
     const tick2 = await (await fetch(`${app1.baseUrl}/api/realtime-balance`)).json();
-    expect(tick2.displayBalanceYuan).toBe(95000);
+    expect(Math.abs(tick2.displayBalanceYuan - tick1.displayBalanceYuan)).toBeLessThan(1);
+    expect(tick2.flowPerSecondYuan).toBe(0);
+    expect(tick2.sourceSummary.activeRecurringCount).toBe(0);
 
     await app1.close();
 
     const app2 = await boot(dbPath);
     cleanups.push(app2.close);
     const persistedSnapshot = await (await fetch(`${app2.baseUrl}/api/snapshot`)).json();
-    expect(persistedSnapshot.currentBalanceYuan).toBe(95000);
+    expect(Math.abs(persistedSnapshot.currentBalanceYuan - tick2.displayBalanceYuan)).toBeLessThan(1);
 
     const deletedEvents = await (
       await fetch(`${app2.baseUrl}/api/events?status=deleted`)

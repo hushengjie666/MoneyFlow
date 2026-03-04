@@ -1,5 +1,7 @@
-﻿import {
+import {
+  clearAllLocalData,
   createEvent,
+  deleteEvent,
   getRealtimeBalance,
   getSavingsGoalSettings,
   getSnapshot,
@@ -9,7 +11,8 @@
   putSnapshot
 } from "./api-client.js";
 import { startBalancePolling } from "./balance-engine.js";
-import { formatEtaDuration, formatJumpByUnit, formatYuan, formatYuanPrecise, jumpUnitLabel } from "./formatters.js";
+import { formatEtaDuration, formatJumpByUnit, formatYuan, jumpUnitLabel } from "./formatters.js";
+import { estimateGoalEtaBySchedule } from "./goal-eta.js";
 
 const statusText = document.getElementById("statusText");
 const jumpTitle = document.getElementById("jumpTitle");
@@ -20,8 +23,14 @@ const jumpConfigForm = document.getElementById("jumpConfigForm");
 const jumpUnitSelect = document.getElementById("jumpUnit");
 const recurringFields = document.getElementById("recurringFields");
 const eventKindSelect = document.getElementById("eventKind");
+const directionSelect = document.getElementById("direction");
+const titleInput = document.getElementById("title");
 const dailyStartTimeInput = document.getElementById("dailyStartTime");
 const dailyEndTimeInput = document.getElementById("dailyEndTime");
+const weekdayInputs = Array.from(document.querySelectorAll('input[name="activeWeekdays"]'));
+const effectiveAtInput = document.getElementById("effectiveAt");
+const eventSubmitBtn = document.getElementById("eventSubmitBtn");
+const eventModalTitle = document.getElementById("eventModalTitle");
 const jumpCurrent = document.getElementById("jumpCurrent");
 const jumpDelta = document.getElementById("jumpDelta");
 const jumpStair = document.getElementById("jumpStair");
@@ -31,12 +40,14 @@ const openEventModalBtn = document.getElementById("openEventModalBtn");
 const closeEventModalBtn = document.getElementById("closeEventModalBtn");
 const goalForm = document.getElementById("goalForm");
 const goalTargetBalanceInput = document.getElementById("goalTargetBalanceYuan");
+const goalPanel = document.querySelector(".goal-panel");
 const goalBadge = document.getElementById("goalBadge");
 const goalProgressFill = document.getElementById("goalProgressFill");
 const goalProgressText = document.getElementById("goalProgressText");
 const goalEtaText = document.getElementById("goalEtaText");
 const menuButtons = Array.from(document.querySelectorAll(".menu-btn"));
 const panelPages = Array.from(document.querySelectorAll(".panel-page"));
+const clearLocalDataBtn = document.getElementById("clearLocalDataBtn");
 
 const STAIR_STEP_COUNT = 14;
 const JUMP_UNIT_STORAGE_KEY = "moneyflow.ui.jumpUnit";
@@ -54,6 +65,15 @@ const RECURRENCE_UNIT_LABEL = {
   week: "周",
   month: "月"
 };
+const WEEKDAY_LABEL = {
+  1: "一",
+  2: "二",
+  3: "三",
+  4: "四",
+  5: "五",
+  6: "六",
+  7: "日"
+};
 
 let lastTickBalance = null;
 let clockTimer = null;
@@ -61,6 +81,9 @@ let statusTimer = null;
 let currentJumpUnit = "second";
 let currentGoalTarget = null;
 let goalCompletionNotifiedFor = null;
+let cachedEvents = [];
+let editingEventId = null;
+let editingEventKind = null;
 
 function getSavedJumpUnit() {
   try {
@@ -157,11 +180,31 @@ function setStatus(message, type = "info") {
 }
 
 function openEventModal() {
+  if (!editingEventId) {
+    effectiveAtInput.value = toDateTimeLocalValue(new Date());
+    eventModalTitle.textContent = "新增资金事件";
+    eventSubmitBtn.textContent = "创建事件";
+    eventKindSelect.disabled = false;
+  }
   eventModal?.classList.remove("hidden");
 }
 
 function closeEventModal() {
+  editingEventId = null;
+  editingEventKind = null;
+  eventModalTitle.textContent = "新增资金事件";
+  eventSubmitBtn.textContent = "创建事件";
+  eventKindSelect.disabled = false;
   eventModal?.classList.add("hidden");
+}
+
+function toDateTimeLocalValue(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
 function switchPanel(targetId) {
@@ -197,32 +240,42 @@ function normalizeDateTimeLocal(value) {
   return parsed.toISOString();
 }
 
-function formatEventType(event) {
-  if (event.eventKind === "one_time") return "一次性";
-  const unit = RECURRENCE_UNIT_LABEL[event.recurrenceUnit] ?? event.recurrenceUnit ?? "天";
-  const interval = Number(event.recurrenceInterval ?? 1);
-  return `周期性 · 每${interval}${unit}`;
-}
-
 function formatEventSchedule(event) {
   if (event.eventKind === "one_time") {
     return new Date(event.effectiveAt).toLocaleString("zh-CN", { hour12: false });
   }
-  return `${event.dailyStartTime ?? "00:01"} - ${event.dailyEndTime ?? "24:00"}`;
+  const weekdays = Array.isArray(event.activeWeekdays) ? event.activeWeekdays : [1, 2, 3, 4, 5, 6, 7];
+  const dayText = weekdays
+    .filter((day) => Number.isInteger(day) && day >= 1 && day <= 7)
+    .sort((a, b) => a - b)
+    .map((day) => `周${WEEKDAY_LABEL[day]}`)
+    .join("、");
+  return `${event.dailyStartTime ?? "00:01"} - ${event.dailyEndTime ?? "23:59"} · ${dayText || "周一至周日"}`;
 }
 
-function renderGoalProgress(currentBalanceYuan, flowPerSecondYuan) {
+function formatStatusLabel(status) {
+  if (status === "active") return "启用";
+  if (status === "paused") return "暂停";
+  if (status === "deleted") return "已删除";
+  return "未知";
+}
+
+function formatTypeBadge(event) {
+  if (event.eventKind === "one_time") return "一次性";
+  const unit = RECURRENCE_UNIT_LABEL[event.recurrenceUnit] ?? event.recurrenceUnit ?? "月";
+  const interval = Number(event.recurrenceInterval ?? 1);
+  return `每${interval}${unit}`;
+}
+
+function renderGoalProgress(currentBalanceYuan, events) {
   if (!goalBadge || !goalProgressFill || !goalProgressText || !goalEtaText) return;
 
   if (!(Number.isFinite(currentGoalTarget) && currentGoalTarget > 0)) {
-    goalBadge.textContent = "未设置";
-    goalBadge.classList.remove("active", "completed");
-    goalProgressFill.style.width = "0%";
-    goalProgressText.textContent = "请先在设置中填写存款目标";
-    goalEtaText.textContent = "预计完成：--";
+    goalPanel?.classList.add("hidden");
     goalCompletionNotifiedFor = null;
     return;
   }
+  goalPanel?.classList.remove("hidden");
 
   const current = Number(currentBalanceYuan ?? 0);
   const progress = Math.min(1, Math.max(0, current / currentGoalTarget));
@@ -247,11 +300,11 @@ function renderGoalProgress(currentBalanceYuan, flowPerSecondYuan) {
   goalBadge.classList.remove("completed");
   goalCompletionNotifiedFor = null;
 
-  if (flowPerSecondYuan > 0) {
-    const remainingSeconds = (currentGoalTarget - current) / flowPerSecondYuan;
-    goalEtaText.textContent = `预计完成：约 ${formatEtaDuration(remainingSeconds)}`;
+  const estimatedBySchedule = estimateGoalEtaBySchedule(current, currentGoalTarget, events, new Date());
+  if (estimatedBySchedule != null && Number.isFinite(estimatedBySchedule) && estimatedBySchedule > 0) {
+    goalEtaText.textContent = `预计完成：约 ${formatEtaDuration(estimatedBySchedule)}`;
   } else {
-    goalEtaText.textContent = "预计完成：当前净流入≤0，暂无法预测";
+    goalEtaText.textContent = "预计完成：按当前时间窗净流入≤0，暂无法预测";
   }
 }
 
@@ -267,17 +320,13 @@ function renderJumpSpotlight(tick) {
   const unitMultiplier = JUMP_UNIT_SECONDS[currentJumpUnit] ?? 1;
   const normalizedDelta = flowPerSecond * unitMultiplier;
 
-  const shouldUsePrecise = Math.abs(flowPerSecond) > 0 && Math.abs(flowPerSecond) < 0.01;
-  jumpCurrent.textContent = shouldUsePrecise ? formatYuanPrecise(numericValue, 4) : formatYuan(numericValue);
-  jumpCurrent.classList.remove("ticking");
-  void jumpCurrent.offsetWidth;
-  jumpCurrent.classList.add("ticking");
+  jumpCurrent.textContent = formatYuan(numericValue);
 
   jumpDelta.textContent = formatJumpByUnit(normalizedDelta, currentJumpUnit);
   const direction = flowPerSecond > 0 ? "up" : flowPerSecond < 0 ? "down" : "flat";
   jumpDelta.dataset.direction = direction;
   renderJumpRhythm(flowPerSecond, direction);
-  renderGoalProgress(numericValue, flowPerSecond);
+  renderGoalProgress(numericValue, tick?.events ?? cachedEvents);
 }
 
 async function handleDeleteEvent(id) {
@@ -300,6 +349,53 @@ async function handleRestoreEvent(id) {
   }
 }
 
+async function handleHardDeleteEvent(id) {
+  if (!window.confirm("将彻底删除该事件，且不可恢复。确定继续吗？")) return;
+  try {
+    await deleteEvent(id);
+    setStatus("事件已彻底删除", "success");
+    await reloadSummary();
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
+function handleEditEvent(event) {
+  editingEventId = event.id;
+  editingEventKind = event.eventKind;
+  eventModalTitle.textContent = "编辑资金事件";
+  eventSubmitBtn.textContent = "保存修改";
+  eventKindSelect.disabled = false;
+
+  const amountInput = document.getElementById("amountYuan");
+  const recurrenceUnitInput = document.getElementById("recurrenceUnit");
+  const recurrenceIntervalInput = document.getElementById("recurrenceInterval");
+
+  titleInput.value = event.title ?? "";
+  amountInput.value = Number(event.amountYuan).toFixed(2);
+  directionSelect.value = event.direction;
+  eventKindSelect.value = event.eventKind;
+  effectiveAtInput.value = toDateTimeLocalValue(new Date(event.effectiveAt));
+
+  const isRecurring = event.eventKind === "recurring";
+  recurringFields.classList.toggle("hidden", !isRecurring);
+  if (isRecurring) {
+    recurrenceUnitInput.value = event.recurrenceUnit ?? "month";
+    recurrenceIntervalInput.value = Number(event.recurrenceInterval ?? 1);
+    dailyStartTimeInput.value = event.dailyStartTime ?? "00:01";
+    dailyEndTimeInput.value = event.dailyEndTime ?? "23:59";
+    const selected = new Set(Array.isArray(event.activeWeekdays) ? event.activeWeekdays : [1, 2, 3, 4, 5, 6, 7]);
+    weekdayInputs.forEach((input) => {
+      input.checked = selected.has(Number(input.value));
+    });
+  } else {
+    weekdayInputs.forEach((input) => {
+      input.checked = true;
+    });
+  }
+  openEventModal();
+}
+
 function renderEventItem(event) {
   const li = document.createElement("li");
   li.className = "event-row";
@@ -317,23 +413,52 @@ function renderEventItem(event) {
 
   const meta = document.createElement("div");
   meta.className = "event-row-meta";
-  meta.textContent = `${formatEventType(event)} · ${formatEventSchedule(event)} · 状态：${event.status}`;
 
+  const typeBadge = document.createElement("span");
+  typeBadge.className = "event-type-badge";
+  typeBadge.textContent = formatTypeBadge(event);
+
+  const metaLine = document.createElement("div");
+  metaLine.className = "event-meta-line";
+  metaLine.textContent = formatEventSchedule(event);
+
+  const statusBadge = document.createElement("span");
+  statusBadge.className = "event-status-badge";
+  statusBadge.dataset.status = event.status;
+  statusBadge.textContent = formatStatusLabel(event.status);
+
+  meta.append(typeBadge, metaLine, statusBadge);
   content.append(title, amount, meta);
 
-  const action = document.createElement("button");
-  action.type = "button";
+  const actions = document.createElement("div");
+  actions.className = "event-actions";
   if (event.status === "deleted") {
-    action.className = "restore-btn";
-    action.textContent = "恢复";
-    action.addEventListener("click", () => handleRestoreEvent(event.id));
+    const restoreAction = document.createElement("button");
+    restoreAction.type = "button";
+    restoreAction.className = "restore-btn";
+    restoreAction.textContent = "恢复";
+    restoreAction.addEventListener("click", () => handleRestoreEvent(event.id));
+    const hardDeleteAction = document.createElement("button");
+    hardDeleteAction.type = "button";
+    hardDeleteAction.className = "hard-delete-btn";
+    hardDeleteAction.textContent = "彻底删除";
+    hardDeleteAction.addEventListener("click", () => handleHardDeleteEvent(event.id));
+    actions.append(restoreAction, hardDeleteAction);
   } else {
-    action.className = "danger-btn";
-    action.textContent = "删除";
-    action.addEventListener("click", () => handleDeleteEvent(event.id));
+    const editAction = document.createElement("button");
+    editAction.type = "button";
+    editAction.className = "edit-btn";
+    editAction.textContent = "编辑";
+    editAction.addEventListener("click", () => handleEditEvent(event));
+    const softDeleteAction = document.createElement("button");
+    softDeleteAction.type = "button";
+    softDeleteAction.className = "danger-btn";
+    softDeleteAction.textContent = "删除";
+    softDeleteAction.addEventListener("click", () => handleDeleteEvent(event.id));
+    actions.append(editAction, softDeleteAction);
   }
 
-  li.append(content, action);
+  li.append(content, actions);
   return li;
 }
 
@@ -343,7 +468,7 @@ function renderEventList(events) {
   if (!events.length) {
     const empty = document.createElement("li");
     empty.className = "event-row";
-    empty.textContent = "暂无事件，点击“快捷新增事件”开始记录。";
+    empty.textContent = "暂无事件，请前往首页点击“快捷新增事件”开始记录。";
     eventList.appendChild(empty);
     return;
   }
@@ -363,9 +488,11 @@ async function loadGoalSettings() {
 
 async function reloadSummary() {
   const [snapshot, tick, events] = await Promise.all([getSnapshot(), getRealtimeBalance(), listEvents()]);
+  cachedEvents = events;
   renderJumpSpotlight({
     displayBalanceYuan: snapshot.currentBalanceYuan,
-    flowPerSecondYuan: tick.flowPerSecondYuan
+    flowPerSecondYuan: tick.flowPerSecondYuan,
+    events
   });
   renderEventList(events);
 }
@@ -394,7 +521,7 @@ snapshotForm.addEventListener("submit", async (event) => {
   try {
     setStatus("正在保存...", "loading");
     await putSnapshot(initialBalanceYuan);
-    setStatus("初始存款已保存（仅清除一次性事件）", "success");
+    setStatus("初始存款已保存", "success");
     await reloadSummary();
     switchPanel("homePanel");
   } catch (error) {
@@ -434,21 +561,61 @@ goalForm?.addEventListener("submit", async (event) => {
   }
 });
 
+clearLocalDataBtn?.addEventListener("click", async () => {
+  const confirmed = window.confirm("确认清除所有本地数据吗？此操作不可恢复。");
+  if (!confirmed) return;
+
+  try {
+    setStatus("正在清除本地数据...", "loading");
+    await clearAllLocalData();
+    try {
+      localStorage.removeItem(JUMP_UNIT_STORAGE_KEY);
+    } catch {
+      // ignore local storage failures
+    }
+    applyJumpUnit("second");
+    currentGoalTarget = null;
+    goalCompletionNotifiedFor = null;
+    if (goalTargetBalanceInput) {
+      goalTargetBalanceInput.value = "";
+    }
+    await reloadSummary();
+    switchPanel("homePanel");
+    setStatus("本地数据已清除", "success");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+});
+
 eventKindSelect.addEventListener("change", () => {
   const isRecurring = eventKindSelect.value === "recurring";
   recurringFields.classList.toggle("hidden", !isRecurring);
+});
+
+titleInput?.addEventListener("input", () => {
+  const text = String(titleInput.value ?? "");
+  if (text.includes("工资")) {
+    directionSelect.value = "inflow";
+    return;
+  }
+  if (text.includes("贷")) {
+    directionSelect.value = "outflow";
+  }
 });
 
 eventForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const formData = new FormData(eventForm);
   const payload = {
-    title: formData.get("title"),
-    eventKind: formData.get("eventKind"),
-    direction: formData.get("direction"),
+    title: String(formData.get("title") ?? "").trim(),
     amountYuan: Number(formData.get("amountYuan")),
+    direction: formData.get("direction"),
+    eventKind: formData.get("eventKind"),
     effectiveAt: normalizeDateTimeLocal(formData.get("effectiveAt"))
   };
+  if (editingEventId != null && !payload.eventKind) {
+    payload.eventKind = editingEventKind;
+  }
 
   if (payload.eventKind === "recurring") {
     if ((formData.get("dailyStartTime") ?? "").trim() === "00:00") {
@@ -457,22 +624,54 @@ eventForm.addEventListener("submit", async (event) => {
     }
     payload.recurrenceUnit = formData.get("recurrenceUnit");
     payload.recurrenceInterval = Number(formData.get("recurrenceInterval"));
-    payload.dailyStartTime = formData.get("dailyStartTime");
-    payload.dailyEndTime = formData.get("dailyEndTime");
+    payload.dailyStartTime = String(formData.get("dailyStartTime") || "00:01");
+    payload.dailyEndTime = String(formData.get("dailyEndTime") || "23:59");
+    payload.activeWeekdays = formData
+      .getAll("activeWeekdays")
+      .map((day) => Number(day))
+      .filter((day) => Number.isInteger(day) && day >= 1 && day <= 7);
+    if (!payload.activeWeekdays.length) {
+      setStatus("请至少选择一个生效日（周一到周日）", "error");
+      return;
+    }
   }
 
   try {
     setStatus("正在保存事件...", "loading");
-    await createEvent(payload);
-    setStatus("事件已创建", "success");
+    if (editingEventId != null) {
+      const patchPayload = {
+        title: payload.title,
+        direction: payload.direction,
+        amountYuan: payload.amountYuan,
+        effectiveAt: payload.effectiveAt
+      };
+      if (payload.eventKind === "recurring") {
+        patchPayload.recurrenceUnit = payload.recurrenceUnit;
+        patchPayload.recurrenceInterval = payload.recurrenceInterval;
+        patchPayload.dailyStartTime = payload.dailyStartTime;
+        patchPayload.dailyEndTime = payload.dailyEndTime;
+        patchPayload.activeWeekdays = payload.activeWeekdays;
+      }
+      await patchEvent(editingEventId, patchPayload);
+      setStatus("事件已更新", "success");
+    } else {
+      await createEvent(payload);
+      setStatus("事件已创建", "success");
+    }
     await reloadSummary();
     closeEventModal();
     switchPanel("homePanel");
     eventForm.reset();
     recurringFields.classList.add("hidden");
     eventKindSelect.value = "one_time";
+    eventKindSelect.disabled = false;
+    editingEventKind = null;
+    effectiveAtInput.value = toDateTimeLocalValue(new Date());
     dailyStartTimeInput.value = "00:01";
-    dailyEndTimeInput.value = "24:00";
+    dailyEndTimeInput.value = "23:59";
+    weekdayInputs.forEach((input) => {
+      input.checked = true;
+    });
   } catch (error) {
     setStatus(error.message, "error");
   }

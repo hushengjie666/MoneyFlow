@@ -63,4 +63,15 @@ describe("one-time event validation", () => {
       })
     ).toBeNull();
   });
+
+  it("accepts payload without title", () => {
+    expect(
+      validateEventCreatePayload({
+        eventKind: "one_time",
+        direction: "outflow",
+        amountYuan: 99.99,
+        effectiveAt: new Date().toISOString()
+      })
+    ).toBeNull();
+  });
 });

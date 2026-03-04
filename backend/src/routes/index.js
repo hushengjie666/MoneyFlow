@@ -1,6 +1,6 @@
 import { methodNotAllowed, notFound, sendJson } from "../lib/http.js";
 
-export function createApiRouter({ snapshotRoutes, eventRoutes, realtimeRoutes }) {
+export function createApiRouter({ snapshotRoutes, eventRoutes, realtimeRoutes, localDataRoutes }) {
   return async function apiRouter(req, res) {
     if (req.method === "OPTIONS") {
       sendJson(res, 200, { ok: true });
@@ -26,6 +26,12 @@ export function createApiRouter({ snapshotRoutes, eventRoutes, realtimeRoutes })
     if (url.pathname === "/api/realtime-balance") {
       const handled = await realtimeRoutes(req, res, url);
       if (!handled) methodNotAllowed(res, ["GET"]);
+      return;
+    }
+
+    if (url.pathname === "/api/local-data") {
+      const handled = await localDataRoutes(req, res, url);
+      if (!handled) methodNotAllowed(res, ["DELETE"]);
       return;
     }
 

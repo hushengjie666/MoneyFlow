@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS cashflow_event (
   recurrence_interval INTEGER,
   daily_start_time TEXT NOT NULL DEFAULT '00:01',
   daily_end_time TEXT NOT NULL DEFAULT '24:00',
+  active_weekdays TEXT NOT NULL DEFAULT '1,2,3,4,5,6,7',
   status TEXT NOT NULL CHECK(status IN ('active', 'paused', 'deleted')),
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -101,8 +102,14 @@ function migrateFromCentsToYuan(db) {
     "daily_end_time",
     "ALTER TABLE cashflow_event ADD COLUMN daily_end_time TEXT NOT NULL DEFAULT '24:00'"
   );
+  addColumnIfMissing(
+    db,
+    "cashflow_event",
+    "active_weekdays",
+    "ALTER TABLE cashflow_event ADD COLUMN active_weekdays TEXT NOT NULL DEFAULT '1,2,3,4,5,6,7'"
+  );
   db.exec(
-    "UPDATE cashflow_event SET daily_start_time = CASE WHEN daily_start_time IS NULL OR daily_start_time = '' OR daily_start_time = '00:00' THEN '00:01' ELSE daily_start_time END, daily_end_time = COALESCE(NULLIF(daily_end_time, ''), '24:00')"
+    "UPDATE cashflow_event SET daily_start_time = CASE WHEN daily_start_time IS NULL OR daily_start_time = '' OR daily_start_time = '00:00' THEN '00:01' ELSE daily_start_time END, daily_end_time = COALESCE(NULLIF(daily_end_time, ''), '24:00'), active_weekdays = COALESCE(NULLIF(active_weekdays, ''), '1,2,3,4,5,6,7')"
   );
 
   if (!eventCols.includes("title")) {
@@ -129,12 +136,13 @@ function migrateFromCentsToYuan(db) {
         recurrence_interval INTEGER,
         daily_start_time TEXT NOT NULL DEFAULT '00:01',
         daily_end_time TEXT NOT NULL DEFAULT '24:00',
+        active_weekdays TEXT NOT NULL DEFAULT '1,2,3,4,5,6,7',
         status TEXT NOT NULL CHECK(status IN ('active', 'paused', 'deleted')),
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
       INSERT INTO cashflow_event_new (
-        id, title, event_kind, direction, amount_yuan, effective_at, recurrence_unit, recurrence_interval, daily_start_time, daily_end_time, status, created_at, updated_at
+        id, title, event_kind, direction, amount_yuan, effective_at, recurrence_unit, recurrence_interval, daily_start_time, daily_end_time, active_weekdays, status, created_at, updated_at
       )
       SELECT
         id,
@@ -147,6 +155,7 @@ function migrateFromCentsToYuan(db) {
         recurrence_interval,
         '00:01',
         '24:00',
+        '1,2,3,4,5,6,7',
         status,
         created_at,
         updated_at

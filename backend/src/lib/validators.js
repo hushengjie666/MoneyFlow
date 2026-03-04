@@ -79,6 +79,20 @@ function validateRecurringFields(payload) {
   if (startSec >= endSec) {
     return "dailyStartTime must be earlier than dailyEndTime";
   }
+  const weekdays = payload.activeWeekdays ?? [1, 2, 3, 4, 5, 6, 7];
+  if (!Array.isArray(weekdays) || weekdays.length === 0) {
+    return "activeWeekdays must contain at least one weekday";
+  }
+  const weekdaySet = new Set();
+  for (const day of weekdays) {
+    if (!isInteger(day) || day < 1 || day > 7) {
+      return "activeWeekdays must use integers 1..7";
+    }
+    weekdaySet.add(day);
+  }
+  if (weekdaySet.size === 0) {
+    return "activeWeekdays must contain at least one weekday";
+  }
   return null;
 }
 
@@ -99,10 +113,10 @@ function validateBaseEventFields(payload, forPatch = false) {
   if (forbiddenFieldError) return forbiddenFieldError;
 
   if (!forPatch || Object.hasOwn(payload, "title")) {
-    if (typeof payload.title !== "string" || payload.title.trim().length === 0) {
-      return "title is required";
+    if (payload.title != null && typeof payload.title !== "string") {
+      return "title must be string";
     }
-    if (payload.title.trim().length > 80) {
+    if (typeof payload.title === "string" && payload.title.trim().length > 80) {
       return "title must be <= 80 chars";
     }
   }
@@ -141,7 +155,8 @@ export function validateEventCreatePayload(payload) {
       payload.recurrenceUnit != null ||
       payload.recurrenceInterval != null ||
       payload.dailyStartTime != null ||
-      payload.dailyEndTime != null
+      payload.dailyEndTime != null ||
+      payload.activeWeekdays != null
     ) {
       return "one_time event must not include recurrence or daily time-window fields";
     }
@@ -165,7 +180,8 @@ export function validateEventPatchPayload(payload) {
     Object.hasOwn(payload, "recurrenceUnit") ||
     Object.hasOwn(payload, "recurrenceInterval") ||
     Object.hasOwn(payload, "dailyStartTime") ||
-    Object.hasOwn(payload, "dailyEndTime");
+    Object.hasOwn(payload, "dailyEndTime") ||
+    Object.hasOwn(payload, "activeWeekdays");
   if (recurrenceTouched) {
     const hasOnlyOneDailyTimeField =
       Object.hasOwn(payload, "dailyStartTime") !== Object.hasOwn(payload, "dailyEndTime");
@@ -176,7 +192,8 @@ export function validateEventPatchPayload(payload) {
       recurrenceUnit: payload.recurrenceUnit,
       recurrenceInterval: payload.recurrenceInterval,
       dailyStartTime: payload.dailyStartTime,
-      dailyEndTime: payload.dailyEndTime
+      dailyEndTime: payload.dailyEndTime,
+      activeWeekdays: payload.activeWeekdays
     });
     if (recurrenceError) return recurrenceError;
   }

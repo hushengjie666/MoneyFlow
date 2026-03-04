@@ -2,6 +2,7 @@ const STORAGE_KEY = "moneyflow.local.v2";
 const DAY_SECONDS = 24 * 60 * 60;
 const SECOND_MS = 1000;
 const MONEY_PRECISION = 10000;
+const ASIA_SHANGHAI_OFFSET_SECONDS = 8 * 60 * 60;
 const DEFAULT_SETTINGS = {
   savingsGoalTargetYuan: null,
   updatedAt: null
@@ -68,46 +69,155 @@ function getDailyWindow(event) {
   return { startSec, endSec, activeLengthSec: endSec - startSec };
 }
 
+function parseActiveWeekdays(event) {
+  const source = event.activeWeekdays ?? [1, 2, 3, 4, 5, 6, 7];
+  const days = Array.isArray(source)
+    ? source
+    : String(source)
+      .split(",")
+      .map((item) => Number(item.trim()));
+  const valid = days.filter((day) => Number.isInteger(day) && day >= 1 && day <= 7);
+  return new Set(valid.length ? valid : [1, 2, 3, 4, 5, 6, 7]);
+}
+
 function overlapSeconds(startA, endA, startB, endB) {
   return Math.max(0, Math.min(endA, endB) - Math.max(startA, startB));
 }
 
-function activeSecondsBetween(startSec, endSec, dailyStartSec, dailyEndSec) {
-  if (endSec <= startSec || dailyEndSec <= dailyStartSec) return 0;
-  const startDay = Math.floor(startSec / DAY_SECONDS);
-  const endDay = Math.floor((endSec - 1) / DAY_SECONDS);
-
-  if (startDay === endDay) {
-    return overlapSeconds(
-      startSec,
-      endSec,
-      startDay * DAY_SECONDS + dailyStartSec,
-      startDay * DAY_SECONDS + dailyEndSec
-    );
-  }
-
-  const firstDayEnd = (startDay + 1) * DAY_SECONDS;
-  const firstPartial = overlapSeconds(
-    startSec,
-    firstDayEnd,
-    startDay * DAY_SECONDS + dailyStartSec,
-    startDay * DAY_SECONDS + dailyEndSec
-  );
-  const lastDayStart = endDay * DAY_SECONDS;
-  const lastPartial = overlapSeconds(
-    lastDayStart,
-    endSec,
-    endDay * DAY_SECONDS + dailyStartSec,
-    endDay * DAY_SECONDS + dailyEndSec
-  );
-  const fullDaysBetween = Math.max(0, endDay - startDay - 1);
-  const middle = fullDaysBetween * (dailyEndSec - dailyStartSec);
-  return firstPartial + middle + lastPartial;
+function toLocalDayAlignedSeconds(epochSeconds) {
+  return epochSeconds + ASIA_SHANGHAI_OFFSET_SECONDS;
 }
 
-function isInDailyWindow(nowSec, dailyStartSec, dailyEndSec) {
-  const secOfDay = ((nowSec % DAY_SECONDS) + DAY_SECONDS) % DAY_SECONDS;
+function isoWeekdayFromDayIndex(dayIndex) {
+  return ((dayIndex + 3) % 7 + 7) % 7 + 1;
+}
+
+function countActiveDaysInPeriod(startDayIndex, periodDays, weekdaySet) {
+  let activeDayCount = 0;
+  for (let offset = 0; offset < periodDays; offset += 1) {
+    if (weekdaySet.has(isoWeekdayFromDayIndex(startDayIndex + offset))) {
+      activeDayCount += 1;
+    }
+  }
+  return activeDayCount;
+}
+
+function computeActiveSecondsPerPeriod(event, dailyStartSec, dailyEndSec, weekdaySet) {
+  const totalSeconds = periodSeconds(event.recurrenceUnit, event.recurrenceInterval);
+  const periodDays = Math.max(1, Math.floor(totalSeconds / DAY_SECONDS));
+  const activeLengthSec = Math.max(1, dailyEndSec - dailyStartSec);
+  const eventLocalSec = toLocalDayAlignedSeconds(toEpochSeconds(event.effectiveAt));
+  const eventStartDay = Math.floor(eventLocalSec / DAY_SECONDS);
+  const activeDayCount = Math.max(1, countActiveDaysInPeriod(eventStartDay, periodDays, weekdaySet));
+  return activeDayCount * activeLengthSec;
+}
+
+function activeSecondsBetween(startSec, endSec, dailyStartSec, dailyEndSec, weekdaySet) {
+  if (endSec <= startSec || dailyEndSec <= dailyStartSec) return 0;
+  const localStartSec = toLocalDayAlignedSeconds(startSec);
+  const localEndSec = toLocalDayAlignedSeconds(endSec);
+  const startDay = Math.floor(localStartSec / DAY_SECONDS);
+  const endDay = Math.floor((localEndSec - 1) / DAY_SECONDS);
+
+  let total = 0;
+  for (let day = startDay; day <= endDay; day += 1) {
+    if (!weekdaySet.has(isoWeekdayFromDayIndex(day))) continue;
+    const dayWindowStart = day * DAY_SECONDS + dailyStartSec;
+    const dayWindowEnd = day * DAY_SECONDS + dailyEndSec;
+    total += overlapSeconds(localStartSec, localEndSec, dayWindowStart, dayWindowEnd);
+  }
+  return total;
+}
+
+function isInDailyWindow(nowSec, dailyStartSec, dailyEndSec, weekdaySet) {
+  const localNowSec = toLocalDayAlignedSeconds(nowSec);
+  const dayIndex = Math.floor(localNowSec / DAY_SECONDS);
+  if (!weekdaySet.has(isoWeekdayFromDayIndex(dayIndex))) return false;
+  const secOfDay = ((localNowSec % DAY_SECONDS) + DAY_SECONDS) % DAY_SECONDS;
   return secOfDay >= dailyStartSec && secOfDay < dailyEndSec;
+}
+
+function oneTimeContribution(event, nowSec) {
+  const eventSec = toEpochSeconds(event.effectiveAt);
+  if (eventSec > nowSec) return 0;
+  return roundMoney(event.amountYuan * eventSign(event.direction));
+}
+
+function recurringContribution(event, nowSec) {
+  if (event.status !== "active") return 0;
+  const eventSec = toEpochSeconds(event.effectiveAt);
+  if (eventSec > nowSec) return 0;
+
+  const { startSec: dailyStartSec, endSec: dailyEndSec } = getDailyWindow(event);
+  const weekdaySet = parseActiveWeekdays(event);
+  const elapsedActive = activeSecondsBetween(eventSec, nowSec, dailyStartSec, dailyEndSec, weekdaySet);
+  if (elapsedActive <= 0) return 0;
+
+  const activeSecondsPerPeriod = computeActiveSecondsPerPeriod(event, dailyStartSec, dailyEndSec, weekdaySet);
+  return roundMoney((elapsedActive * event.amountYuan * eventSign(event.direction)) / activeSecondsPerPeriod);
+}
+
+function computeEventContribution(event, now = new Date()) {
+  const nowSec = Math.floor(now.getTime() / SECOND_MS);
+  if (event.eventKind === "one_time") return oneTimeContribution(event, nowSec);
+  if (event.eventKind === "recurring") return recurringContribution(event, nowSec);
+  return 0;
+}
+
+function normalizeWeekdays(value) {
+  const source = Array.isArray(value) ? value : [1, 2, 3, 4, 5, 6, 7];
+  return source
+    .map((day) => Number(day))
+    .filter((day) => Number.isInteger(day) && day >= 1 && day <= 7)
+    .sort((a, b) => a - b);
+}
+
+function sameWeekdays(a, b) {
+  const left = normalizeWeekdays(a);
+  const right = normalizeWeekdays(b);
+  if (left.length !== right.length) return false;
+  return left.every((item, index) => item === right[index]);
+}
+
+function hasRecurringFinancialChange(previous, patchPayload) {
+  if (previous.eventKind !== "recurring") return false;
+  const scalarFields = [
+    "amountYuan",
+    "direction",
+    "recurrenceUnit",
+    "recurrenceInterval",
+    "dailyStartTime",
+    "dailyEndTime"
+  ];
+  for (const field of scalarFields) {
+    if (Object.hasOwn(patchPayload, field) && patchPayload[field] !== previous[field]) {
+      return true;
+    }
+  }
+  if (Object.hasOwn(patchPayload, "activeWeekdays")) {
+    return !sameWeekdays(previous.activeWeekdays, patchPayload.activeWeekdays);
+  }
+  return false;
+}
+
+function buildSettlementEvent(previous, accrued, nowIso, id) {
+  if (Math.abs(accrued) < 0.0001) return null;
+  return {
+    id,
+    title: `${String(previous.title ?? "周期事件").trim() || "周期事件"}（历史结转）`,
+    eventKind: "one_time",
+    direction: accrued >= 0 ? "inflow" : "outflow",
+    amountYuan: roundMoney(Math.abs(accrued)),
+    effectiveAt: nowIso,
+    recurrenceUnit: null,
+    recurrenceInterval: null,
+    dailyStartTime: null,
+    dailyEndTime: null,
+    activeWeekdays: null,
+    status: "active",
+    createdAt: nowIso,
+    updatedAt: nowIso
+  };
 }
 
 function computeBalanceTick({ initialBalanceYuan, events, now = new Date() }) {
@@ -120,9 +230,9 @@ function computeBalanceTick({ initialBalanceYuan, events, now = new Date() }) {
   for (const event of events) {
     if (event.status === "deleted") continue;
     if (event.eventKind === "one_time") {
-      const eventSec = toEpochSeconds(event.effectiveAt);
-      if (eventSec <= nowSec) {
-        total = roundMoney(total + event.amountYuan * eventSign(event.direction));
+      const delta = oneTimeContribution(event, nowSec);
+      if (delta !== 0 || toEpochSeconds(event.effectiveAt) <= nowSec) {
+        total = roundMoney(total + delta);
         oneTimeCount += 1;
       }
       continue;
@@ -132,15 +242,12 @@ function computeBalanceTick({ initialBalanceYuan, events, now = new Date() }) {
       if (event.status !== "active") continue;
       const eventSec = toEpochSeconds(event.effectiveAt);
       if (eventSec > nowSec) continue;
-
-      const { startSec, endSec, activeLengthSec } = getDailyWindow(event);
-      const elapsedActive = activeSecondsBetween(eventSec, nowSec, startSec, endSec);
-      const totalSeconds = periodSeconds(event.recurrenceUnit, event.recurrenceInterval);
-      const periodDays = Math.max(1, Math.floor(totalSeconds / DAY_SECONDS));
-      const activeSecondsPerPeriod = Math.max(1, periodDays * activeLengthSec);
-      const delta = roundMoney((elapsedActive * event.amountYuan * eventSign(event.direction)) / activeSecondsPerPeriod);
+      const delta = recurringContribution(event, nowSec);
       total = roundMoney(total + delta);
-      if (isInDailyWindow(nowSec, startSec, endSec)) {
+      const { startSec, endSec } = getDailyWindow(event);
+      const weekdaySet = parseActiveWeekdays(event);
+      const activeSecondsPerPeriod = computeActiveSecondsPerPeriod(event, startSec, endSec, weekdaySet);
+      if (isInDailyWindow(nowSec, startSec, endSec, weekdaySet)) {
         recurringCount += 1;
         flowPerSecondYuan += (event.amountYuan * eventSign(event.direction)) / activeSecondsPerPeriod;
       }
@@ -226,14 +333,26 @@ function validateDailyWindow(start, end) {
 
 function validateCreatePayload(payload) {
   if (!payload || typeof payload !== "object") fail("payload must be object");
-  if (!payload.title || !String(payload.title).trim()) fail("title is required");
+  if (payload.title != null && typeof payload.title !== "string") fail("title must be string");
+  if (typeof payload.title === "string" && payload.title.trim().length > 80) fail("title must be <= 80 chars");
   if (!["one_time", "recurring"].includes(payload.eventKind)) fail("eventKind must be one_time/recurring");
   if (!["inflow", "outflow"].includes(payload.direction)) fail("direction must be inflow/outflow");
   if (!(typeof payload.amountYuan === "number" && Number.isFinite(payload.amountYuan) && payload.amountYuan >= 0.01)) {
     fail("amountYuan must be >= 0.01");
   }
   if (!payload.effectiveAt || Number.isNaN(Date.parse(payload.effectiveAt))) fail("effectiveAt must be ISO datetime");
-  if (payload.eventKind === "one_time") return;
+  if (payload.eventKind === "one_time") {
+    if (
+      payload.recurrenceUnit != null ||
+      payload.recurrenceInterval != null ||
+      payload.dailyStartTime != null ||
+      payload.dailyEndTime != null ||
+      payload.activeWeekdays != null
+    ) {
+      fail("one_time event must not include recurrence fields");
+    }
+    return;
+  }
 
   if (!["day", "week", "month"].includes(payload.recurrenceUnit)) fail("recurrenceUnit must be day/week/month");
   if (!Number.isInteger(payload.recurrenceInterval) || payload.recurrenceInterval < 1) {
@@ -242,6 +361,13 @@ function validateCreatePayload(payload) {
   const start = payload.dailyStartTime ?? "00:01";
   const end = payload.dailyEndTime ?? "24:00";
   validateDailyWindow(start, end);
+  const weekdays = payload.activeWeekdays ?? [1, 2, 3, 4, 5, 6, 7];
+  if (!Array.isArray(weekdays) || weekdays.length === 0) fail("activeWeekdays must contain at least one weekday");
+  for (const day of weekdays) {
+    if (!Number.isInteger(day) || day < 1 || day > 7) {
+      fail("activeWeekdays must use integers 1..7");
+    }
+  }
 }
 
 function normalizeRecurringFields(payload) {
@@ -257,7 +383,8 @@ function normalizeRecurringFields(payload) {
     recurrenceUnit: payload.recurrenceUnit,
     recurrenceInterval: payload.recurrenceInterval,
     dailyStartTime: payload.dailyStartTime ?? "00:01",
-    dailyEndTime: payload.dailyEndTime ?? "24:00"
+    dailyEndTime: payload.dailyEndTime ?? "24:00",
+    activeWeekdays: Array.isArray(payload.activeWeekdays) && payload.activeWeekdays.length ? payload.activeWeekdays : [1, 2, 3, 4, 5, 6, 7]
   };
 }
 
@@ -285,13 +412,37 @@ export async function putSnapshot(initialBalanceYuan) {
     fail("initialBalanceYuan must be number");
   }
   const store = readStore();
-  store.events = store.events.filter((event) => event.eventKind !== "one_time");
   const now = new Date();
+  const nowIso = now.toISOString();
+  const contributionTick = computeBalanceTick({
+    initialBalanceYuan: 0,
+    events: store.events,
+    now
+  });
+  const contribution = Number(contributionTick.displayBalanceYuan ?? 0);
+  if (Math.abs(contribution) >= 0.0001) {
+    store.events.push({
+      id: store.nextEventId++,
+      title: "初始化对齐",
+      eventKind: "one_time",
+      direction: contribution >= 0 ? "outflow" : "inflow",
+      amountYuan: Math.abs(contribution),
+      effectiveAt: nowIso,
+      recurrenceUnit: null,
+      recurrenceInterval: null,
+      dailyStartTime: null,
+      dailyEndTime: null,
+      activeWeekdays: null,
+      status: "active",
+      createdAt: nowIso,
+      updatedAt: nowIso
+    });
+  }
   store.snapshot = {
     initialBalanceYuan,
     currentBalanceYuan: initialBalanceYuan,
     timezone: "Asia/Shanghai",
-    updatedAt: now.toISOString()
+    updatedAt: nowIso
   };
   writeStore(store);
   return recomputeSnapshot(store, now);
@@ -314,7 +465,7 @@ export async function createEvent(payload) {
   const recurringFields = normalizeRecurringFields(payload);
   const event = {
     id: store.nextEventId++,
-    title: String(payload.title).trim(),
+    title: String(payload.title ?? "").trim() || "未命名事件",
     eventKind: payload.eventKind,
     direction: payload.direction,
     amountYuan: payload.amountYuan,
@@ -323,6 +474,7 @@ export async function createEvent(payload) {
     recurrenceInterval: recurringFields.recurrenceInterval,
     dailyStartTime: recurringFields.dailyStartTime,
     dailyEndTime: recurringFields.dailyEndTime,
+    activeWeekdays: recurringFields.activeWeekdays,
     status: "active",
     createdAt: now,
     updatedAt: now
@@ -339,8 +491,32 @@ export async function patchEvent(id, patchPayload) {
   if (index < 0) fail("event not found");
 
   const prev = store.events[index];
-  const merged = { ...prev, ...patchPayload };
-  validateCreatePayload({
+  const now = new Date();
+  const nowIso = now.toISOString();
+  let nextPatch = { ...patchPayload };
+  let settlementEvent = null;
+
+  if (prev.eventKind === "recurring" && prev.status === "active") {
+    const recurringChanged = hasRecurringFinancialChange(prev, nextPatch);
+    const nextStatus = nextPatch.status ?? prev.status;
+    const turningInactive = nextStatus !== "active";
+    if (recurringChanged || turningInactive) {
+      const accrued = computeEventContribution(prev, now);
+      settlementEvent = buildSettlementEvent(prev, accrued, nowIso, store.nextEventId);
+      if (settlementEvent) {
+        store.nextEventId += 1;
+      }
+    }
+    if (
+      recurringChanged &&
+      (!Object.hasOwn(nextPatch, "effectiveAt") || String(nextPatch.effectiveAt) === String(prev.effectiveAt))
+    ) {
+      nextPatch.effectiveAt = nowIso;
+    }
+  }
+
+  const merged = { ...prev, ...nextPatch };
+  const validationPayload = {
     title: merged.title,
     eventKind: merged.eventKind,
     direction: merged.direction,
@@ -350,18 +526,37 @@ export async function patchEvent(id, patchPayload) {
     recurrenceInterval: merged.recurrenceInterval,
     dailyStartTime: merged.dailyStartTime,
     dailyEndTime: merged.dailyEndTime
-  });
-  if (patchPayload.status && !["active", "paused", "deleted"].includes(patchPayload.status)) {
+  };
+  if (merged.eventKind === "recurring") {
+    validationPayload.activeWeekdays = merged.activeWeekdays;
+  }
+  validateCreatePayload(validationPayload);
+  if (nextPatch.status && !["active", "paused", "deleted"].includes(nextPatch.status)) {
     fail("status must be active/paused/deleted");
   }
 
   store.events[index] = {
     ...merged,
-    updatedAt: new Date().toISOString()
+    updatedAt: nowIso
   };
+  if (settlementEvent) {
+    store.events.push(settlementEvent);
+  }
+  writeStore(store);
+  recomputeSnapshot(store, now);
+  return store.events[index];
+}
+
+export async function deleteEvent(id) {
+  const store = readStore();
+  const nextEvents = store.events.filter((event) => event.id !== Number(id));
+  if (nextEvents.length === store.events.length) {
+    fail("event not found");
+  }
+  store.events = nextEvents;
   writeStore(store);
   recomputeSnapshot(store, new Date());
-  return store.events[index];
+  return { id: Number(id), deleted: true };
 }
 
 export async function getRealtimeBalance() {
@@ -394,4 +589,24 @@ export async function putSavingsGoalSettings(savingsGoalTargetYuan) {
   };
   writeStore(store);
   return { ...store.settings };
+}
+
+export async function clearAllLocalData() {
+  const fresh = {
+    snapshot: null,
+    events: [],
+    nextEventId: 1,
+    settings: { ...DEFAULT_SETTINGS }
+  };
+  writeStore(fresh);
+  memoryFallback.snapshot = null;
+  memoryFallback.events = [];
+  memoryFallback.nextEventId = 1;
+  memoryFallback.settings = { ...DEFAULT_SETTINGS };
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // ignore localStorage failures
+  }
+  return { cleared: true };
 }

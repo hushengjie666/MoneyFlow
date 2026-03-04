@@ -18,6 +18,16 @@ export function formatYuanPrecise(yuan, fractionDigits = 4) {
   }).format(amount);
 }
 
+export function formatYuanDynamic(yuan, maxFractionDigits = 2) {
+  const amount = Number(yuan ?? 0);
+  return new Intl.NumberFormat("zh-CN", {
+    style: "currency",
+    currency: "CNY",
+    minimumFractionDigits: 0,
+    maximumFractionDigits: maxFractionDigits
+  }).format(amount);
+}
+
 export function formatSignedYuan(yuan) {
   const amount = Number(yuan ?? 0);
   if (amount > 0) return `+${formatYuan(amount)}`;
@@ -43,7 +53,20 @@ export function formatJumpByUnit(yuanDelta, unit) {
   const amount = Number(yuanDelta ?? 0);
   const sign = amount > 0 ? "+" : amount < 0 ? "-" : "";
   const unitSuffix = jumpUnitLabel(unit).replace("每", "");
-  return `${sign}${Math.abs(amount).toFixed(3)} 元/${unitSuffix}`;
+  const absAmount = Math.abs(amount);
+  let fractionDigits = 3;
+  if (absAmount >= 100) {
+    fractionDigits = 0;
+  } else if (absAmount >= 10) {
+    fractionDigits = 1;
+  } else if (absAmount >= 1) {
+    fractionDigits = 2;
+  }
+  const compactAmount = new Intl.NumberFormat("zh-CN", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: fractionDigits
+  }).format(absAmount);
+  return `${sign}${compactAmount} 元/${unitSuffix}`;
 }
 
 export function formatEventSummary(event) {

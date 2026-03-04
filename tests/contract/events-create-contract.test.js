@@ -27,4 +27,20 @@ describe("events create contract", () => {
     expect(body.eventKind).toBe("one_time");
     expect(body.amountYuan).toBe(500);
   });
+
+  it("allows empty title and falls back to default name", async () => {
+    const res = await fetch(`${baseUrl}/api/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventKind: "one_time",
+        direction: "inflow",
+        amountYuan: 88,
+        effectiveAt: new Date().toISOString()
+      })
+    });
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.title).toBe("未命名事件");
+  });
 });

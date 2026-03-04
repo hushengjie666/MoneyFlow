@@ -22,5 +22,17 @@ describe("ux state a11y", () => {
     expect(html).toContain('id="jumpStair"');
     expect(html).toContain('id="jumpTimestamp"');
     expect(html).toContain("<label");
+    expect(html).toContain('data-target="homePanel"');
+    expect(html).toContain('data-target="configPanel"');
+    expect(html).toContain('data-target="snapshotPanel"');
+    expect(html).toContain('data-target="recentPanel"');
+
+    const homeIndex = html.indexOf('data-target="homePanel"');
+    const recentIndex = html.indexOf('data-target="recentPanel"');
+    const snapshotIndex = html.indexOf('data-target="snapshotPanel"');
+    const configIndex = html.indexOf('data-target="configPanel"');
+    expect(homeIndex).toBeLessThan(recentIndex);
+    expect(recentIndex).toBeLessThan(snapshotIndex);
+    expect(snapshotIndex).toBeLessThan(configIndex);
   });
 });
