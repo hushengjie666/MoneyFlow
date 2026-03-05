@@ -4,7 +4,10 @@ mod preference_store;
 mod widget_window;
 
 use preference_store::{load_preferences, save_preferences, WidgetPreferenceProfile};
-use serde::Serialize;
+use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::time::Duration;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
@@ -26,6 +29,68 @@ use widget_window::{
 #[derive(Debug, Serialize)]
 struct CommandResponse {
     ok: bool,
+}
+
+const FEEDBACK_PROXY_BASE_URL: &str = "http://94.191.82.58:38127";
+const FEEDBACK_PROXY_TOKEN: &str = "duyu346327yd63g343";
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FeedbackProxyRequest {
+    title: String,
+    content: String,
+    contact: Option<String>,
+    url: Option<String>,
+    ua: Option<String>,
+    app_version: Option<String>,
+    extra: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FeedbackServiceSuccess {
+    ok: bool,
+    id: Option<String>,
+    filename: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct FeedbackServiceFailure {
+    ok: bool,
+    error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct FeedbackProxyResponse {
+    ok: bool,
+    id: Option<String>,
+    filename: Option<String>,
+}
+
+fn normalize_optional_trimmed(value: Option<String>) -> Option<String> {
+    value.and_then(|text| {
+        let trimmed = text.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    })
+}
+
+fn contains_risky_pattern(text: &str) -> bool {
+    let lower = text.to_ascii_lowercase();
+    [
+        "<script",
+        "</script>",
+        "javascript:",
+        "onerror=",
+        "onload=",
+        "drop table",
+        "union select",
+    ]
+    .iter()
+    .any(|token| lower.contains(token))
 }
 
 #[tauri::command]
@@ -120,6 +185,73 @@ fn start_main_window_dragging(app: AppHandle) -> Result<CommandResponse, String>
         .ok_or_else(|| "main window not initialized".to_string())?;
     main_window.start_dragging().map_err(|error| error.to_string())?;
     Ok(CommandResponse { ok: true })
+}
+
+#[tauri::command]
+async fn submit_feedback_proxy(payload: FeedbackProxyRequest) -> Result<FeedbackProxyResponse, String> {
+    let content = payload.content.trim().to_string();
+    if content.len() < 4 {
+        return Err("反馈内容过短，请补充更多细节".to_string());
+    }
+    if content.len() > 1500 {
+        return Err("反馈内容过长，请精简后再提交".to_string());
+    }
+    if contains_risky_pattern(&content) {
+        return Err("反馈内容包含不安全字符，请调整后重试".to_string());
+    }
+    let title = payload.title.trim().to_string();
+    let contact = normalize_optional_trimmed(payload.contact);
+    let url = normalize_optional_trimmed(payload.url);
+    let ua = normalize_optional_trimmed(payload.ua);
+    let app_version = normalize_optional_trimmed(payload.app_version);
+
+    let client = Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .map_err(|error| format!("build http client failed: {error}"))?;
+
+    let endpoint = format!("{}/feedback", FEEDBACK_PROXY_BASE_URL.trim_end_matches('/'));
+    let response = client
+        .post(endpoint)
+        .header("Content-Type", "application/json")
+        .header("X-Feedback-Token", FEEDBACK_PROXY_TOKEN)
+        .json(&serde_json::json!({
+            "title": title,
+            "content": content,
+            "contact": contact,
+            "url": url,
+            "ua": ua,
+            "appVersion": app_version,
+            "extra": payload.extra
+        }))
+        .send()
+        .await
+        .map_err(|error| format!("submit feedback request failed: {error}"))?;
+
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|error| format!("read feedback response failed: {error}"))?;
+
+    if !status.is_success() {
+        if let Ok(failure) = serde_json::from_str::<FeedbackServiceFailure>(&text) {
+            let _ = failure.ok;
+            return Err(failure.error.unwrap_or_else(|| format!("feedback service status {status}")));
+        }
+        return Err(format!("feedback service status {status}: {text}"));
+    }
+
+    let success = serde_json::from_str::<FeedbackServiceSuccess>(&text)
+        .map_err(|error| format!("parse feedback success response failed: {error}"))?;
+    if !success.ok {
+        return Err("feedback service returned ok=false".to_string());
+    }
+    Ok(FeedbackProxyResponse {
+        ok: true,
+        id: success.id,
+        filename: success.filename,
+    })
 }
 
 fn handle_tray_action(app: &AppHandle, action_id: &str) {
@@ -221,7 +353,8 @@ fn main() {
             minimize_main_window,
             toggle_main_window_maximized,
             close_main_window_to_tray,
-            start_main_window_dragging
+            start_main_window_dragging,
+            submit_feedback_proxy
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -8,6 +8,9 @@ const DEFAULT_SETTINGS = {
   savingsGoalTargetYuan: null,
   updatedAt: null
 };
+const FEEDBACK_API_DEFAULT_BASE_URL = "http://94.191.82.58:38127";
+const FEEDBACK_API_DEFAULT_TOKEN = "duyu346327yd63g343";
+const FEEDBACK_API_TIMEOUT_MS = 5000;
 
 const memoryFallback = {
   snapshot: null,
@@ -327,6 +330,78 @@ function fail(message) {
   throw new Error(message);
 }
 
+function resolveFeedbackApiEndpoint() {
+  try {
+    const stored = localStorage.getItem("moneyflow.api.feedbackEndpoint");
+    if (stored && String(stored).trim()) {
+      return String(stored).trim();
+    }
+  } catch {
+    // ignore localStorage failures
+  }
+  try {
+    const storedBase = localStorage.getItem("moneyflow.api.feedbackBaseUrl");
+    const base = storedBase && String(storedBase).trim() ? String(storedBase).trim() : FEEDBACK_API_DEFAULT_BASE_URL;
+    return `${base.replace(/\/+$/, "")}/feedback`;
+  } catch {
+    return `${FEEDBACK_API_DEFAULT_BASE_URL}/feedback`;
+  }
+}
+
+function resolveFeedbackApiToken() {
+  try {
+    const stored = localStorage.getItem("moneyflow.api.feedbackToken");
+    if (stored && String(stored).trim()) {
+      return String(stored).trim();
+    }
+  } catch {
+    // ignore localStorage failures
+  }
+  return FEEDBACK_API_DEFAULT_TOKEN;
+}
+
+function resolveRuntimeUrl() {
+  try {
+    if (typeof window !== "undefined" && window?.location?.href) return window.location.href;
+  } catch {
+    // ignore location read failures
+  }
+  return undefined;
+}
+
+function resolveRuntimeUa() {
+  try {
+    if (typeof navigator !== "undefined" && navigator?.userAgent) return navigator.userAgent;
+  } catch {
+    // ignore navigator read failures
+  }
+  return undefined;
+}
+
+function resolveTauriInvoke() {
+  const tauriCoreInvoke = globalThis?.window?.__TAURI__?.core?.invoke;
+  if (typeof tauriCoreInvoke === "function") return tauriCoreInvoke;
+  const tauriInternalsInvoke = globalThis?.window?.__TAURI_INTERNALS__?.invoke;
+  if (typeof tauriInternalsInvoke === "function") return tauriInternalsInvoke;
+  return null;
+}
+
+function validateFeedbackPayloadSafety({ issueFeedback, featureExpectation }) {
+  const combined = `${issueFeedback}\n${featureExpectation}`.trim();
+  if (!combined) {
+    fail("请至少填写“系统问题反馈”或“期望功能开发”其中一项");
+  }
+  if (combined.length < 4) {
+    fail("反馈内容过短，请补充更多细节");
+  }
+  if (combined.length > 1500) {
+    fail("反馈内容过长，请精简后再提交");
+  }
+  if (/<script|<\/script>|javascript:|onerror=|onload=|drop\s+table|union\s+select/i.test(combined)) {
+    fail("反馈内容包含不安全字符，请调整后重试");
+  }
+}
+
 function validateDailyWindow(start, end) {
   const s = parseDailyTimeToSeconds(start, { allow24: false });
   const e = parseDailyTimeToSeconds(end, { allow24: true });
@@ -624,4 +699,84 @@ export async function clearAllLocalData() {
     // ignore localStorage failures
   }
   return { cleared: true };
+}
+
+export async function submitHelpFeedback(payload) {
+  const issueFeedback = String(payload?.issueFeedback ?? "").trim();
+  const featureExpectation = String(payload?.featureExpectation ?? "").trim();
+  const contact = String(payload?.contact ?? "").trim();
+  validateFeedbackPayloadSafety({ issueFeedback, featureExpectation });
+
+  const sections = [];
+  if (issueFeedback) sections.push(`【系统问题反馈】\n${issueFeedback}`);
+  if (featureExpectation) sections.push(`【期望功能开发】\n${featureExpectation}`);
+  const content = sections.join("\n\n");
+  const title = issueFeedback && featureExpectation ? "MoneyFlow 用户反馈（问题+需求）" : issueFeedback ? "MoneyFlow 系统问题反馈" : "MoneyFlow 期望功能开发";
+
+  const endpoint = resolveFeedbackApiEndpoint();
+  const token = resolveFeedbackApiToken();
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FEEDBACK_API_TIMEOUT_MS);
+
+  const requestPayload = {
+    title,
+    content,
+    contact,
+    url: resolveRuntimeUrl(),
+    ua: resolveRuntimeUa(),
+    appVersion: "moneyflow-speckit-v2",
+    extra: {
+      issueFeedback,
+      featureExpectation,
+      from: "moneyflow-help-panel"
+    }
+  };
+
+  const invoke = resolveTauriInvoke();
+  if (invoke) {
+    clearTimeout(timeout);
+    try {
+      return await invoke("submit_feedback_proxy", { payload: requestPayload });
+    } catch (error) {
+      throw new Error(`反馈提交失败：${error?.message ?? String(error)}`);
+    }
+  }
+
+  if (!token) {
+    fail("反馈 token 未配置");
+  }
+
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Feedback-Token": token
+      },
+      body: JSON.stringify(requestPayload),
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("反馈提交超时，请稍后重试");
+    }
+    throw new Error(`反馈提交失败：${error.message}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  let body = null;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+
+  if (!response.ok || body?.ok === false) {
+    const message = body?.error || body?.error?.message || `反馈提交失败（${response.status}）`;
+    throw new Error(message);
+  }
+  return body ?? { ok: true };
 }

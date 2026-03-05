@@ -68,11 +68,22 @@
               <span>设置</span>
             </span>
           </button>
+          <button class="menu-btn" data-target="helpPanel">
+            <span class="menu-btn-content">
+              <svg class="menu-icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 20v-1.5" />
+                <path d="M9.6 9a2.4 2.4 0 114.8 0c0 1.7-2.4 2.2-2.4 4" />
+                <circle cx="12" cy="12" r="9" />
+              </svg>
+              <span>帮助</span>
+            </span>
+          </button>
         </header>
       </section>
 
+      <p id="statusText" class="status toast hidden" aria-live="polite"></p>
+
       <section id="homePanel" class="panel-page active">
-        <p id="statusText" class="status toast hidden" aria-live="polite"></p>
         <div class="jump-spotlight" aria-live="polite">
           <div class="jump-topline">
             <span id="jumpTitle" class="jump-chip">资金数字跳动 · 每时</span>
@@ -218,6 +229,72 @@
       <section id="recentPanel" class="panel-page">
         <section class="panel">
           <ul id="eventList" class="event-list"></ul>
+        </section>
+      </section>
+
+      <section id="helpPanel" class="panel-page">
+        <section class="panel help-card">
+          <div class="help-hero">
+            <div class="help-hero-main">
+              <h2>帮助与反馈</h2>
+              <p class="help-lead">欢迎反馈系统问题并提出你期望的新功能，我们会持续优化。</p>
+            </div>
+            <div class="help-email-card" aria-label="支持联系方式">
+              <p class="help-email-caption">反馈邮箱</p>
+              <button id="helpSupportEmailBtn" type="button" class="help-email-btn" title="长按复制邮箱">
+                835823869@qq.com
+              </button>
+              <p class="help-email-tip">长按可复制，点击也可复制</p>
+            </div>
+          </div>
+
+          <form id="helpFeedbackForm" class="help-feedback-form">
+            <div class="help-form-grid">
+              <section class="help-field-card">
+                <label for="issueFeedback">系统问题反馈</label>
+                <textarea
+                  id="issueFeedback"
+                  name="issueFeedback"
+                  rows="4"
+                  maxlength="800"
+                  placeholder="请描述你遇到的问题（可选）"
+                ></textarea>
+              </section>
+
+              <section class="help-field-card">
+                <label for="featureExpectation">期望功能开发</label>
+                <textarea
+                  id="featureExpectation"
+                  name="featureExpectation"
+                  rows="4"
+                  maxlength="800"
+                  placeholder="请描述你希望新增的功能（可选）"
+                ></textarea>
+              </section>
+            </div>
+
+            <div id="helpContactStage" class="help-contact-stage">
+              <label for="feedbackContact">联系方式（选填）</label>
+              <input
+                id="feedbackContact"
+                name="contact"
+                type="text"
+                maxlength="120"
+                placeholder="微信 / 邮箱 / 手机号"
+              />
+              <p class="help-contact-hint">感谢反馈！如愿意接收处理结果，可留下联系方式。</p>
+            </div>
+
+            <div class="help-submit-bar">
+              <p class="help-submit-note">我们会进行基础风控校验以防止恶意提交。</p>
+            </div>
+            <div class="help-feedback-actions">
+              <button id="helpFeedbackStartBtn" type="submit">提交反馈</button>
+            </div>
+          </form>
+
+          <p id="helpFeedbackStatus" class="help-feedback-status hidden" aria-live="polite"></p>
+
         </section>
       </section>
     </main>
