@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MoneyFlow Widget</title>
+    <link rel="stylesheet" href="/src/widget/widget-styles.css" />
+  </head>
+  <body>
+    <main class="widget-shell" data-tauri-drag-region>
+      <section class="jump-spotlight widget-card" aria-live="polite" data-tauri-drag-region>
+        <div class="jump-topline">
+          <span id="widgetJumpTitle" class="jump-chip">资金数字跳动 · 每时</span>
+          <span id="widgetStatus" class="widget-status" data-state="loading">加载中...</span>
+        </div>
+        <div id="widgetFlow" class="jump-delta" data-direction="flat">+0.000 元/秒</div>
+        <div id="widgetJumpStair" class="jump-stair" data-direction="flat" aria-hidden="true"></div>
+        <div class="balance-inline balance-inline-bottom">
+          <span class="jump-header">当前余额</span>
+          <span id="widgetBalance" class="jump-current-inline">--</span>
+        </div>
+        <div id="widgetTimestamp" class="jump-time">实时时间：----年--月--日 --:--:--</div>
+      </section>
+
+    </main>
+
+    <script type="module" src="/src/widget/widget-main.js"></script>
+  </body>
+</html>

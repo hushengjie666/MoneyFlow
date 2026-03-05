@@ -6,7 +6,7 @@ Every new conversation MUST start by applying this file before any code work.
 
 ## Mandatory Startup Checklist (Every New Conversation)
 1. Read this `AGENTS.md` first.
-2. Load the active feature spec folder under `specs/<feature-id>/`.
+2. Load the active feature spec folder under `specs/<feature-id>/` using minimal-read strategy first (index/target sections before full file).
 3. Apply workflow order: `specify -> clarify (if needed) -> plan -> tasks -> analyze -> implement`.
 4. Confirm constitution compliance before coding.
 5. Confirm test scope and release gate before claiming completion.
@@ -21,6 +21,23 @@ If any required file is missing, state it explicitly and continue with the safes
 5. Templates and helper scripts in `.specify/`
 
 If conflicts exist, follow higher-priority rules and explain the conflict in the response.
+
+## Default Low-Token Mode (Mandatory)
+This repository defaults to low-token mode in all tasks and all new conversations unless the user explicitly requests full-detail mode.
+
+### Low-Token Execution Rules
+1. **Minimal read first**: prefer `rg`/`Select-String`/targeted line reads; avoid full-file `Get-Content -Raw` for large files unless required.
+2. **Incremental context loading**: load only directly relevant files/sections first; expand scope only when blocked.
+3. **Avoid duplicate reads**: do not repeatedly re-open the same large file unless content changed.
+4. **Bounded search output**: narrow search path/patterns to reduce irrelevant matches.
+5. **Test scope minimization by default**: run affected tests first during iteration; run full release gate commands only when claiming completion or when user requests full verification.
+6. **Concise runtime reporting**: report key outcomes and failures only; avoid dumping long command output unless user asks.
+7. **Single-pass edits**: batch related edits to reduce repeated scan/edit cycles.
+
+### Mode Switching
+- Default: `low-token mode` ON.
+- If user explicitly asks for “full detail/full scan/full logs/full verification”, temporarily switch to full mode for that task only.
+- After task ends, revert to default `low-token mode`.
 
 ## Spec-Kit Workflow (Mandatory)
 All functional changes MUST follow Speckit flow end-to-end before merge:
@@ -97,6 +114,8 @@ Mandatory testing rules:
 3. UX changes MUST include loading/empty/error/success considerations.
 4. Performance-sensitive changes MUST preserve or re-check budget expectations.
 5. Keep solutions simple; avoid unnecessary abstractions.
+6. Cross-component consistency is mandatory: when a feature uses a shared data source (e.g., main page and widget), every change MUST include an explicit check and necessary updates for all related components.
+7. When task changes involve Rust runtime code (`src-tauri/**`), the agent MUST restart the desktop client once after implementation so the user can verify the actual runtime behavior, unless the user explicitly asks not to restart.
 
 ## Response Format Rules (Mandatory)
 1. Final task responses MUST end with fixed completion banner.

@@ -143,6 +143,21 @@ npm run test:e2e
 - 单用户约束：写入请求禁止 `userId/accountId` 字段。
 - 时区默认并回传 `Asia/Shanghai`。
 
+### 9.1 资金数字跳动维护约束（重点）
+
+维护时必须先对齐 `spec.md` 中“资金数字跳动规则（重点约束）”章节，禁止只改代码不改规则说明。
+
+- 统一计算文件：`frontend/src/jump-flow.js`
+- 统一回归测试：`tests/unit/jump-flow.test.js`
+- 主页面与悬浮组件均调用 `resolveJumpDisplayDeltaByUnit`，不可各写一套公式
+- 维度口径摘要：
+  - `second/minute/hour`：受 `activeWeekdays` + `dailyStartTime/dailyEndTime` 双重约束
+  - `day`：受 `activeWeekdays` 约束，不受每日时间窗约束
+  - `week/month/year`：按名义周期换算（`7d/30d/360d`），不按工作时段折算
+- 代码评审必查：
+  - 是否同步更新 `spec.md` 本规则
+  - 是否新增/更新对应单测用例（工作时段内、工作时段外、非生效工作日）
+
 ## 10. SC-005 Usability Survey Template
 
 目标：至少 20 名参与者，评分 4/5 的比例 >= 85%。

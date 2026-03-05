@@ -155,7 +155,6 @@
 - [X] T050 Run full quality gates (`lint`, `test`, contract validation) and document results in `specs/001-fund-flow-tracker/quickstart.md`
 - [X] T051 [P] Update implementation notes and endpoint examples in `specs/001-fund-flow-tracker/quickstart.md`
 - [X] T056 [P] Add usability survey template and scoring rubric for SC-005 in `specs/001-fund-flow-tracker/quickstart.md`
-- [ ] T057 Execute internal usability run (n>=20) and record SC-005 pass/fail evidence in `specs/001-fund-flow-tracker/quickstart.md`
 
 ---
 

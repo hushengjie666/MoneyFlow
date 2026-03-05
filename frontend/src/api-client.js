@@ -2,6 +2,7 @@ const STORAGE_KEY = "moneyflow.local.v2";
 const DAY_SECONDS = 24 * 60 * 60;
 const SECOND_MS = 1000;
 const MONEY_PRECISION = 10000;
+const FLOW_PRECISION = 10000000000;
 const ASIA_SHANGHAI_OFFSET_SECONDS = 8 * 60 * 60;
 const DEFAULT_SETTINGS = {
   savingsGoalTargetYuan: null,
@@ -29,6 +30,10 @@ function cloneStoreShape(source) {
 
 function roundMoney(value) {
   return Math.round((value + Number.EPSILON) * MONEY_PRECISION) / MONEY_PRECISION;
+}
+
+function roundFlow(value) {
+  return Math.round((value + Number.EPSILON) * FLOW_PRECISION) / FLOW_PRECISION;
 }
 
 function toEpochSeconds(iso) {
@@ -257,7 +262,7 @@ function computeBalanceTick({ initialBalanceYuan, events, now = new Date() }) {
   return {
     timestamp: new Date(nowSec * SECOND_MS).toISOString(),
     displayBalanceYuan: total,
-    flowPerSecondYuan: roundMoney(flowPerSecondYuan),
+    flowPerSecondYuan: roundFlow(flowPerSecondYuan),
     sourceSummary: {
       activeRecurringCount: recurringCount,
       effectiveOneTimeCount: oneTimeCount
@@ -483,6 +488,16 @@ export async function createEvent(payload) {
   writeStore(store);
   recomputeSnapshot(store, new Date());
   return event;
+}
+
+export async function createQuickOneTimeEvent({ amountYuan, direction, title = "小组件快速记账" }) {
+  return createEvent({
+    title,
+    eventKind: "one_time",
+    direction,
+    amountYuan,
+    effectiveAt: new Date().toISOString()
+  });
 }
 
 export async function patchEvent(id, patchPayload) {

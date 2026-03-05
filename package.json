@@ -6,6 +6,10 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "node backend/src/server.js",
+    "tauri:dev": "tauri dev --no-watch",
+    "tauri:build": "tauri build --debug --no-bundle",
+    "tauri:build:full": "tauri build",
+    "tauri:build:nsis": "tauri build -b nsis",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest run",
@@ -18,10 +22,12 @@
     "sc005:apply": "node scripts/sc005-report.mjs specs/001-fund-flow-tracker/usability-survey-template.csv --apply"
   },
   "dependencies": {
+    "@tauri-apps/api": "^2.8.0",
     "better-sqlite3": "^11.8.1",
     "vite": "^5.4.11"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "^2.8.2",
     "eslint": "^8.57.0",
     "prettier": "^3.6.2",
     "vitest": "^3.2.4"

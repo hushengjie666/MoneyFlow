@@ -78,4 +78,52 @@ describe("frontend api recurring continuity", () => {
     expect(events.some((event) => event.title === "历史收入")).toBe(true);
     expect(events.some((event) => event.title === "初始化对齐")).toBe(true);
   });
+
+  it("keeps 20000 monthly inflow conversion precise in local fallback tick", async () => {
+    await createEvent({
+      title: "月工资",
+      eventKind: "recurring",
+      direction: "inflow",
+      amountYuan: 20000,
+      effectiveAt: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(),
+      recurrenceUnit: "month",
+      recurrenceInterval: 1,
+      dailyStartTime: "00:01",
+      dailyEndTime: "23:59",
+      activeWeekdays: [1, 2, 3, 4, 5, 6, 7]
+    });
+
+    const tick = await getRealtimeBalance();
+    const activeSecondsInMonth = 30 * (23 * 3600 + 58 * 60);
+    const expectedFlow = 20000 / activeSecondsInMonth;
+    expect(tick.flowPerSecondYuan).toBeCloseTo(expectedFlow, 10);
+  });
+
+  it("reduces fallback per-minute/hour/day jump when weekdays change from 5 to 7", async () => {
+    const effectiveAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString();
+    const basePayload = {
+      title: "月工资",
+      eventKind: "recurring",
+      direction: "inflow",
+      amountYuan: 20000,
+      effectiveAt,
+      recurrenceUnit: "month",
+      recurrenceInterval: 1,
+      dailyStartTime: "00:01",
+      dailyEndTime: "23:59"
+    };
+
+    await createEvent({ ...basePayload, activeWeekdays: [1, 2, 3, 4, 5] });
+    const fiveDayTick = await getRealtimeBalance();
+
+    await clearAllLocalData();
+    await putSnapshot(0);
+    await createEvent({ ...basePayload, activeWeekdays: [1, 2, 3, 4, 5, 6, 7] });
+    const sevenDayTick = await getRealtimeBalance();
+
+    expect(fiveDayTick.flowPerSecondYuan).toBeGreaterThan(sevenDayTick.flowPerSecondYuan);
+    expect(fiveDayTick.flowPerSecondYuan * 60).toBeGreaterThan(sevenDayTick.flowPerSecondYuan * 60);
+    expect(fiveDayTick.flowPerSecondYuan * 3600).toBeGreaterThan(sevenDayTick.flowPerSecondYuan * 3600);
+    expect(fiveDayTick.flowPerSecondYuan * 86400).toBeGreaterThan(sevenDayTick.flowPerSecondYuan * 86400);
+  });
 });
