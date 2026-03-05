@@ -8,6 +8,7 @@
   --jump-amber: #f4a21d;
   --jump-cyan: #1b9fd8;
   --jump-deep: #10172d;
+  --top-frame-height: 106px;
 }
 
 * {
@@ -51,7 +52,7 @@ body {
   border: none;
   box-shadow: none;
   overflow: hidden;
-  padding: 106px 0 0;
+  padding: var(--top-frame-height) 0 0;
 }
 
 .top-frame {
@@ -237,7 +238,7 @@ body {
 .top-nav {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 4px;
   background:
     linear-gradient(180deg, rgba(229, 239, 252, 0.92), rgba(220, 233, 249, 0.9));
@@ -254,7 +255,7 @@ body {
 .panel-page {
   display: none;
   padding: 10px 12px 18px;
-  height: calc(100vh - 106px);
+  height: calc(100vh - var(--top-frame-height));
   overflow: auto;
   scrollbar-gutter: stable both-edges;
 }
@@ -890,6 +891,7 @@ form {
 
 input,
 select,
+textarea,
 button {
   font: inherit;
   padding: 9px 10px;
@@ -898,7 +900,8 @@ button {
 }
 
 input,
-select {
+select,
+textarea {
   width: 100%;
 }
 
@@ -1291,11 +1294,187 @@ button {
   filter: brightness(1.05);
 }
 
-@media (max-width: 520px) {
-  .app-shell {
-    padding-top: 100px;
-  }
+#helpPanel.active {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
 
+.help-card {
+  background:
+    linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid #d6e2f2;
+  box-shadow:
+    0 10px 24px rgba(25, 60, 110, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
+.help-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 12px 12px 10px;
+  border-radius: 14px;
+  border: 1px solid #d8e5f4;
+  background:
+    radial-gradient(120% 150% at 0% 0%, rgba(205, 229, 255, 0.35), rgba(205, 229, 255, 0)),
+    linear-gradient(180deg, #fbfdff 0%, #f3f8ff 100%);
+  margin-bottom: 12px;
+}
+
+.help-hero-main h2 {
+  margin: 0;
+  font-size: 1.9rem;
+  line-height: 1.1;
+  color: #102f59;
+}
+
+.help-lead {
+  margin: 8px 0 0;
+  color: #50698f;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+.help-email-card {
+  min-width: 250px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid #c7d9ee;
+  background: #f7fbff;
+}
+
+.help-email-caption {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  color: #637b9e;
+  text-transform: uppercase;
+}
+
+.help-email-tip {
+  margin: 6px 0 0;
+  color: #607a9f;
+  font-size: 0.8rem;
+}
+
+.help-feedback-form {
+  gap: 12px;
+}
+
+.help-form-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.help-field-card {
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid #d6e3f3;
+  background: #fbfdff;
+  display: grid;
+  gap: 7px;
+}
+
+.help-feedback-form label[for="issueFeedback"] {
+  margin-top: 4px;
+}
+
+.help-feedback-form textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.help-contact-stage {
+  border: 1px solid #d2deef;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #f5f9ff;
+}
+
+.help-contact-hint {
+  margin: 6px 0 0;
+  color: #4c6284;
+  font-size: 0.84rem;
+}
+
+.help-feedback-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.help-feedback-actions button {
+  min-width: 120px;
+}
+
+.help-feedback-status {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid #d7e2f1;
+  background: #f8fbff;
+  color: #385072;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.help-submit-bar {
+  margin-top: 2px;
+}
+
+.help-submit-note {
+  margin: 0;
+  color: #607a9f;
+  font-size: 0.82rem;
+}
+
+.help-feedback-status[data-type="loading"] {
+  border-color: #bfd4f5;
+  background: #eef4ff;
+  color: #214f9a;
+}
+
+.help-feedback-status[data-type="error"] {
+  border-color: #f2c1cb;
+  background: #fff2f4;
+  color: #9c2240;
+}
+
+.help-feedback-status[data-type="success"] {
+  border-color: #b8e5cf;
+  background: #ebfbf3;
+  color: #176045;
+}
+
+.help-contact-block {
+  margin-top: 8px;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  color: #405878;
+  font-size: 0.9rem;
+}
+
+.help-email-btn {
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid #a9c5e8;
+  background: linear-gradient(180deg, #ffffff, #e9f3ff);
+  color: #124a91;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.help-email-btn:hover {
+  background: #e8f1ff;
+}
+
+@media (max-width: 520px) {
   .app-head {
     padding: 6px 8px 4px;
   }
@@ -1363,12 +1542,25 @@ button {
   }
 
   .panel-page {
-    height: calc(100vh - 100px);
+    height: calc(100vh - var(--top-frame-height));
     padding: 8px 10px 14px;
   }
 
   .settings-overview {
     padding: 10px 11px;
+  }
+
+  .help-hero {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .help-hero-main h2 {
+    font-size: 1.5rem;
+  }
+
+  .help-email-card {
+    min-width: 0;
   }
 
   .settings-card {

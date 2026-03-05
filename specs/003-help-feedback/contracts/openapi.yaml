@@ -1,0 +1,42 @@
+openapi: 3.0.3
+info:
+  title: Feedback Service API (Referenced)
+  version: 0.1.0
+servers:
+  - url: http://94.191.82.58:38127
+paths:
+  /feedback:
+    post:
+      summary: Submit feedback
+      parameters:
+        - in: header
+          name: X-Feedback-Token
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - content
+              properties:
+                title:
+                  type: string
+                content:
+                  type: string
+                contact:
+                  type: string
+                url:
+                  type: string
+                ua:
+                  type: string
+                appVersion:
+                  type: string
+                extra:
+                  type: object
+      responses:
+        "200":
+          description: success

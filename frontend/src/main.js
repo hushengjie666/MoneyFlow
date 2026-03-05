@@ -8,7 +8,8 @@ import {
   listEvents,
   patchEvent,
   putSavingsGoalSettings,
-  putSnapshot
+  putSnapshot,
+  submitHelpFeedback
 } from "./api-client.js";
 import { startBalancePolling } from "./balance-engine.js";
 import { formatEtaDuration, formatJumpByUnit, formatYuan, formatYuanDynamic, jumpUnitLabel } from "./formatters.js";
@@ -69,6 +70,15 @@ const appHeadDrag = document.querySelector(".app-head-drag");
 const windowMinBtn = document.getElementById("windowMinBtn");
 const windowMaxBtn = document.getElementById("windowMaxBtn");
 const windowCloseBtn = document.getElementById("windowCloseBtn");
+const topFrame = document.querySelector(".top-frame");
+const helpFeedbackForm = document.getElementById("helpFeedbackForm");
+const issueFeedbackInput = document.getElementById("issueFeedback");
+const featureExpectationInput = document.getElementById("featureExpectation");
+const helpContactStage = document.getElementById("helpContactStage");
+const feedbackContactInput = document.getElementById("feedbackContact");
+const helpFeedbackStartBtn = document.getElementById("helpFeedbackStartBtn");
+const helpFeedbackStatus = document.getElementById("helpFeedbackStatus");
+const helpSupportEmailBtn = document.getElementById("helpSupportEmailBtn");
 
 const STAIR_STEP_COUNT = 14;
 const JUMP_UNIT_STORAGE_KEY = "moneyflow.ui.jumpUnit";
@@ -107,6 +117,114 @@ let goalCompletionNotifiedFor = null;
 let cachedEvents = [];
 let editingEventId = null;
 let editingEventKind = null;
+let topFrameSyncRaf = null;
+let lastHelpSubmitAt = 0;
+let emailCopyPressTimer = null;
+
+function syncTopFrameLayout() {
+  if (!topFrame) return;
+  const height = Math.max(90, Math.ceil(topFrame.getBoundingClientRect().height));
+  document.documentElement.style.setProperty("--top-frame-height", `${height}px`);
+}
+
+function requestTopFrameLayoutSync() {
+  if (topFrameSyncRaf != null) return;
+  topFrameSyncRaf = window.requestAnimationFrame(() => {
+    topFrameSyncRaf = null;
+    syncTopFrameLayout();
+  });
+}
+
+function setHelpFeedbackStatus(message, type = "info") {
+  if (!helpFeedbackStatus) return;
+  if (!message) {
+    helpFeedbackStatus.textContent = "";
+    helpFeedbackStatus.classList.add("hidden");
+    return;
+  }
+  helpFeedbackStatus.textContent = message;
+  helpFeedbackStatus.dataset.type = type;
+  helpFeedbackStatus.classList.remove("hidden");
+}
+
+function normalizeHelpFeedbackPayload() {
+  return {
+    issueFeedback: String(issueFeedbackInput?.value ?? "").trim(),
+    featureExpectation: String(featureExpectationInput?.value ?? "").trim(),
+    contact: String(feedbackContactInput?.value ?? "").trim()
+  };
+}
+
+function validateHelpFeedbackInput(payload) {
+  const combined = `${payload.issueFeedback}\n${payload.featureExpectation}`.trim();
+  if (!combined) {
+    return "请至少填写“系统问题反馈”或“期望功能开发”其中一项";
+  }
+  if (combined.length < 4) {
+    return "反馈内容过短，请补充更多细节";
+  }
+  if (combined.length > 1500) {
+    return "反馈内容过长，请精简后再提交";
+  }
+  const riskyPattern = /<script|<\/script>|javascript:|onerror=|onload=|drop\s+table|union\s+select/i;
+  if (riskyPattern.test(combined)) {
+    return "反馈内容包含不安全字符，请调整后重试";
+  }
+  const urlMatches = combined.match(/https?:\/\/|www\./gi) ?? [];
+  if (urlMatches.length > 4) {
+    return "检测到过多链接，请精简后提交";
+  }
+  return null;
+}
+
+async function copySupportEmail() {
+  const email = "835823869@qq.com";
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(email);
+    } else {
+      const helper = document.createElement("textarea");
+      helper.value = email;
+      helper.style.position = "fixed";
+      helper.style.opacity = "0";
+      document.body.appendChild(helper);
+      helper.focus();
+      helper.select();
+      document.execCommand("copy");
+      document.body.removeChild(helper);
+    }
+    setStatus("邮箱已复制", "success");
+  } catch {
+    setStatus(`请手动复制：${email}`, "loading");
+  }
+}
+
+async function submitHelpFeedbackFlow() {
+  const payload = normalizeHelpFeedbackPayload();
+  const ruleError = validateHelpFeedbackInput(payload);
+  if (ruleError) {
+    setHelpFeedbackStatus(ruleError, "error");
+    return;
+  }
+  if (Date.now() - lastHelpSubmitAt < 10000) {
+    setHelpFeedbackStatus("提交过于频繁，请稍后再试", "error");
+    return;
+  }
+
+  try {
+    setHelpFeedbackStatus("正在提交反馈...", "loading");
+    if (helpFeedbackStartBtn) helpFeedbackStartBtn.disabled = true;
+    await submitHelpFeedback(payload);
+    lastHelpSubmitAt = Date.now();
+    const successMessage = "提交成功！感谢你的反馈与建议，我们会认真评估并持续改进产品。";
+    setHelpFeedbackStatus(successMessage, "success");
+    helpFeedbackForm?.reset();
+  } catch (error) {
+    setHelpFeedbackStatus(error.message, "error");
+  } finally {
+    if (helpFeedbackStartBtn) helpFeedbackStartBtn.disabled = false;
+  }
+}
 
 function getSavedJumpUnit() {
   try {
@@ -874,9 +992,46 @@ eventForm.addEventListener("submit", async (event) => {
   }
 });
 
+helpFeedbackForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  await submitHelpFeedbackFlow();
+});
+
+helpSupportEmailBtn?.addEventListener("pointerdown", () => {
+  if (emailCopyPressTimer) clearTimeout(emailCopyPressTimer);
+  emailCopyPressTimer = setTimeout(() => {
+    emailCopyPressTimer = null;
+    copySupportEmail();
+  }, 500);
+});
+helpSupportEmailBtn?.addEventListener("pointerup", () => {
+  if (emailCopyPressTimer) {
+    clearTimeout(emailCopyPressTimer);
+    emailCopyPressTimer = null;
+  }
+});
+helpSupportEmailBtn?.addEventListener("pointerleave", () => {
+  if (emailCopyPressTimer) {
+    clearTimeout(emailCopyPressTimer);
+    emailCopyPressTimer = null;
+  }
+});
+helpSupportEmailBtn?.addEventListener("click", async () => {
+  await copySupportEmail();
+});
+
+issueFeedbackInput?.addEventListener("input", () => setHelpFeedbackStatus(""));
+featureExpectationInput?.addEventListener("input", () => setHelpFeedbackStatus(""));
+feedbackContactInput?.addEventListener("input", () => setHelpFeedbackStatus(""));
+window.addEventListener("resize", requestTopFrameLayoutSync);
+
 async function init() {
+  syncTopFrameLayout();
+  requestTopFrameLayoutSync();
   initJumpStair();
   applyJumpUnit(getSavedJumpUnit());
+  helpContactStage?.classList.remove("hidden");
+  setHelpFeedbackStatus("");
   if (showSystemEventsToggle) {
     showSystemEventsToggle.checked = shouldShowSystemEvents();
   }
