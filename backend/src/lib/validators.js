@@ -142,6 +142,18 @@ function validateBaseEventFields(payload, forPatch = false) {
   return null;
 }
 
+function validateClientSource(payload, forPatch = false) {
+  if (!Object.hasOwn(payload, "clientSource")) return null;
+  if (forPatch) return "clientSource is immutable";
+  if (!["app", "widget"].includes(payload.clientSource)) {
+    return "clientSource must be app/widget";
+  }
+  if (payload.clientSource === "widget" && payload.eventKind !== "one_time") {
+    return "widget clientSource only supports one_time events";
+  }
+  return null;
+}
+
 export function validateEventCreatePayload(payload) {
   if (!payload || typeof payload !== "object") return "payload must be object";
   const baseError = validateBaseEventFields(payload);
@@ -150,6 +162,8 @@ export function validateEventCreatePayload(payload) {
   if (!["one_time", "recurring"].includes(payload.eventKind)) {
     return "eventKind must be one_time/recurring";
   }
+  const sourceError = validateClientSource(payload, false);
+  if (sourceError) return sourceError;
   if (payload.eventKind === "one_time") {
     if (
       payload.recurrenceUnit != null ||
@@ -172,6 +186,8 @@ export function validateEventPatchPayload(payload) {
   if (Object.keys(payload).length === 0) return "patch payload must not be empty";
   const baseError = validateBaseEventFields(payload, true);
   if (baseError) return baseError;
+  const sourceError = validateClientSource(payload, true);
+  if (sourceError) return sourceError;
 
   if (Object.hasOwn(payload, "status") && !["active", "paused", "deleted"].includes(payload.status)) {
     return "status must be active/paused/deleted";

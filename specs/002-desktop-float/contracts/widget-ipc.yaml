@@ -1,0 +1,131 @@
+openapi: 3.0.3
+info:
+  title: MoneyFlow Desktop Widget IPC Contract
+  version: 0.1.0
+  description: |
+    Contract-like definition for Tauri command IPC used by desktop widget.
+    This is not an HTTP API; it documents invoke command payload/response shapes.
+servers: []
+paths: {}
+components:
+  schemas:
+    CommandResponse:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        code:
+          type: string
+        message:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+    WidgetPreferenceProfile:
+      type: object
+      required:
+        - version
+        - x
+        - y
+        - width
+        - height
+        - opacity
+        - alwaysOnTop
+        - collapsed
+        - startupMode
+        - updatedAt
+      properties:
+        version:
+          type: integer
+          minimum: 1
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+          minimum: 220
+        height:
+          type: number
+          minimum: 72
+        opacity:
+          type: number
+          minimum: 0.4
+          maximum: 1.0
+        alwaysOnTop:
+          type: boolean
+        collapsed:
+          type: boolean
+        startupMode:
+          type: string
+          enum: [auto, manual]
+        updatedAt:
+          type: string
+          format: date-time
+    SetBoolPayload:
+      type: object
+      required: [value]
+      properties:
+        value:
+          type: boolean
+    SavePreferencesPayload:
+      type: object
+      required: [preferences]
+      properties:
+        preferences:
+          $ref: '#/components/schemas/WidgetPreferenceProfile'
+    CommandCatalog:
+      type: object
+      description: Tauri command list and IO schema mapping
+      properties:
+        get_widget_preferences:
+          type: object
+          properties:
+            request:
+              type: object
+              description: empty object
+            response:
+              $ref: '#/components/schemas/WidgetPreferenceProfile'
+        save_widget_preferences:
+          type: object
+          properties:
+            request:
+              $ref: '#/components/schemas/SavePreferencesPayload'
+            response:
+              $ref: '#/components/schemas/CommandResponse'
+        set_widget_topmost:
+          type: object
+          properties:
+            request:
+              $ref: '#/components/schemas/SetBoolPayload'
+            response:
+              $ref: '#/components/schemas/CommandResponse'
+        set_widget_collapsed:
+          type: object
+          properties:
+            request:
+              $ref: '#/components/schemas/SetBoolPayload'
+            response:
+              $ref: '#/components/schemas/CommandResponse'
+        hide_widget_window:
+          type: object
+          properties:
+            request:
+              type: object
+            response:
+              $ref: '#/components/schemas/CommandResponse'
+        show_widget_window:
+          type: object
+          properties:
+            request:
+              type: object
+            response:
+              $ref: '#/components/schemas/CommandResponse'
+        open_main_window:
+          type: object
+          properties:
+            request:
+              type: object
+            response:
+              $ref: '#/components/schemas/CommandResponse'

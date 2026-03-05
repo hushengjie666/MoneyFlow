@@ -101,7 +101,7 @@ describe("recurring proration", () => {
     expect(tickMonday.flowPerSecondYuan).toBeGreaterThan(0);
   });
 
-  it("keeps monthly single-workday rate in a reasonable range", () => {
+  it("scales per-second flow by active weekday density for monthly recurring event", () => {
     const event = {
       eventKind: "recurring",
       direction: "inflow",
@@ -117,9 +117,60 @@ describe("recurring proration", () => {
 
     const mondayMidday = new Date("2026-01-12T04:00:00.000Z");
     const tick = computeBalanceTick({ initialBalanceYuan: 0, now: mondayMidday, events: [event] });
-    const yuanPerHour = tick.flowPerSecondYuan * 3600;
+    const expectedFlow = 10000 / (4 * (23 * 3600 + 58 * 60));
 
-    expect(yuanPerHour).toBeGreaterThan(50);
-    expect(yuanPerHour).toBeLessThan(200);
+    expect(tick.flowPerSecondYuan).toBeCloseTo(expectedFlow, 10);
+  });
+
+  it("preserves monthly flow precision for 20000 salary display", () => {
+    const event = {
+      eventKind: "recurring",
+      direction: "inflow",
+      amountYuan: 20000,
+      effectiveAt: "2026-01-01T00:00:00.000Z",
+      recurrenceUnit: "month",
+      recurrenceInterval: 1,
+      dailyStartTime: "00:00",
+      dailyEndTime: "24:00",
+      activeWeekdays: [1, 2, 3, 4, 5, 6, 7],
+      status: "active"
+    };
+
+    const now = new Date("2026-01-15T12:00:00.000Z");
+    const tick = computeBalanceTick({ initialBalanceYuan: 0, now, events: [event] });
+    const monthlyEquivalent = tick.flowPerSecondYuan * 30 * 24 * 3600;
+
+    expect(monthlyEquivalent).toBeCloseTo(20000, 3);
+  });
+
+  it("reduces per-second flow when monthly salary spreads from 5 weekdays to 7 weekdays", () => {
+    const base = {
+      eventKind: "recurring",
+      direction: "inflow",
+      amountYuan: 20000,
+      effectiveAt: "2026-01-05T00:00:00.000Z",
+      recurrenceUnit: "month",
+      recurrenceInterval: 1,
+      dailyStartTime: "00:01",
+      dailyEndTime: "23:59",
+      status: "active"
+    };
+
+    const now = new Date("2026-01-15T04:00:00.000Z");
+    const fiveDayTick = computeBalanceTick({
+      initialBalanceYuan: 0,
+      now,
+      events: [{ ...base, activeWeekdays: [1, 2, 3, 4, 5] }]
+    });
+    const sevenDayTick = computeBalanceTick({
+      initialBalanceYuan: 0,
+      now,
+      events: [{ ...base, activeWeekdays: [1, 2, 3, 4, 5, 6, 7] }]
+    });
+
+    expect(fiveDayTick.flowPerSecondYuan).toBeGreaterThan(sevenDayTick.flowPerSecondYuan);
+    expect(fiveDayTick.flowPerSecondYuan * 60).toBeGreaterThan(sevenDayTick.flowPerSecondYuan * 60);
+    expect(fiveDayTick.flowPerSecondYuan * 3600).toBeGreaterThan(sevenDayTick.flowPerSecondYuan * 3600);
+    expect(fiveDayTick.flowPerSecondYuan * 86400).toBeGreaterThan(sevenDayTick.flowPerSecondYuan * 86400);
   });
 });

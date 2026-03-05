@@ -105,6 +105,39 @@
 - **FR-013**: 系统 MUST 按用户本地时区进行资金事件存储与余额计算；当前默认时区为 Asia/Shanghai。  
 - **FR-014**: 系统 MUST 以“元”为业务金额单位，在输入、存储与接口层保持一致，并保证金额最多 2 位小数。  
 
+### 资金数字跳动规则（重点约束，禁止随意改动）
+
+以下规则是首页与悬浮组件共享的资金跳动基线，任何变更都必须先更新本节并补充对应回归测试。
+
+1. 统一入口：
+   - 展示层必须通过 `resolveJumpDisplayDeltaByUnit` 计算“每秒/每分/每时/每天/每周/每月/每年”显示值。
+   - 主页面与悬浮组件必须使用同一计算模块，不允许复制并分叉公式。
+2. 生效前提：
+   - 仅统计 `eventKind=recurring` 且 `status=active` 且 `effectiveAt <= now` 且金额/间隔合法（`amountYuan>0`、`recurrenceInterval>=1`）的事件。
+3. `second` / `minute` / `hour` 维度：
+   - 必须同时满足：当天在 `activeWeekdays` 内，且当前时间在 `dailyStartTime <= now < dailyEndTime` 时间窗内。
+   - 任一条件不满足时，该事件对 `second/minute/hour` 的贡献为 `0`。
+   - 单事件公式：  
+     `activeDaysPerPeriod = periodDays * (activeWeekdaysCount / 7)`  
+     `activeHoursPerDay = (dailyEndTime - dailyStartTime)`  
+     `hourDelta = amount / (activeDaysPerPeriod * activeHoursPerDay)`  
+     `minuteDelta = hourDelta / 60`  
+     `secondDelta = minuteDelta / 60`
+4. `day` 维度：
+   - 只受 `activeWeekdays` 影响，不受 `dailyStartTime/dailyEndTime` 影响（即使当前在时间窗外也可显示当天维度跳动）。
+   - 单事件公式：`dayDelta = amount / activeDaysPerPeriod`。
+5. `week` / `month` / `year` 维度：
+   - 使用“名义周期流速”（`amount / recurrencePeriodSeconds`）换算，不按工作时段折算。
+   - 单事件换算：`week = perSecond * 7d`，`month = perSecond * 30d`，`year = perSecond * 360d`。
+6. 方向与叠加：
+   - 入项为正、出项为负；多事件按代数和叠加。
+7. 变更守则（强制）：
+   - 修改任一跳动口径时，必须同步更新：
+     - `frontend/src/jump-flow.js` 的对应实现
+     - `tests/unit/jump-flow.test.js` 的回归样例
+     - 本规范章节
+   - 未同时完成上述三项，不得合入。
+
 ### Non-Functional Requirements *(mandatory)*
 
 - **NFR-001**: 系统 MUST 为关键用户流定义一致体验，包括首次无数据、加载中、输入错误、保存成功、保存失败等状态。  

@@ -47,7 +47,7 @@ Release-ready means:
 - `npm run test:e2e` passes
 - SC-005 survey evidence is recorded (manual gate)
 
-If SC-005 evidence is not yet available, release can proceed only as an internal build with an explicit open item on `T057`.
+If SC-005 evidence is not yet available, release can proceed only as an internal build with an explicit open manual-evidence follow-up item.
 
 ## Feature Completion Rule (Mandatory)
 

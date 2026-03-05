@@ -43,4 +43,36 @@ describe("events create contract", () => {
     const body = await res.json();
     expect(body.title).toBe("未命名事件");
   });
+
+  it("accepts widget one_time payload and rejects widget recurring payload", async () => {
+    const okRes = await fetch(`${baseUrl}/api/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventKind: "one_time",
+        direction: "outflow",
+        amountYuan: 12.5,
+        effectiveAt: new Date().toISOString(),
+        clientSource: "widget"
+      })
+    });
+    expect(okRes.status).toBe(201);
+
+    const badRes = await fetch(`${baseUrl}/api/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        eventKind: "recurring",
+        direction: "outflow",
+        amountYuan: 12.5,
+        effectiveAt: new Date().toISOString(),
+        recurrenceUnit: "day",
+        recurrenceInterval: 1,
+        clientSource: "widget"
+      })
+    });
+    expect(badRes.status).toBe(400);
+    const body = await badRes.json();
+    expect(body.error?.message).toContain("widget clientSource only supports one_time events");
+  });
 });
