@@ -60,4 +60,24 @@ describe("settings and modal safety flow", () => {
     expect(js).not.toContain("if (event.target === eventModal)");
     expect(js).toContain("event.stopPropagation()");
   });
+
+  it("resets event form fields when closing edit modal and reopening create modal", () => {
+    const jsPath = path.resolve("frontend/src/main.js");
+    const js = fs.readFileSync(jsPath, "utf8");
+
+    expect(js).toContain("function resetEventFormToCreateDefaults()");
+    expect(js).toContain("resetEventFormToCreateDefaults();");
+    expect(js).toContain("if (eventKindSelect) eventKindSelect.value = \"one_time\";");
+    expect(js).toContain("if (directionSelect) directionSelect.value = \"outflow\";");
+  });
+
+  it("patches eventKind and clears recurrence fields when saving one-time edits", () => {
+    const jsPath = path.resolve("frontend/src/main.js");
+    const js = fs.readFileSync(jsPath, "utf8");
+
+    expect(js).toContain("eventKind: payload.eventKind");
+    expect(js).toContain("patchPayload.recurrenceUnit = null;");
+    expect(js).toContain("patchPayload.recurrenceInterval = null;");
+    expect(js).toContain("patchPayload.activeWeekdays = null;");
+  });
 });

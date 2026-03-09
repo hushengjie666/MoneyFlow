@@ -364,7 +364,7 @@ function setStatus(message, type = "info") {
 
 function openEventModal() {
   if (!editingEventId) {
-    effectiveAtInput.value = toDateTimeLocalValue(new Date());
+    resetEventFormToCreateDefaults();
     eventModalTitle.textContent = "新增资金事件";
     eventSubmitBtn.textContent = "创建事件";
     eventKindSelect.disabled = false;
@@ -378,7 +378,21 @@ function closeEventModal() {
   eventModalTitle.textContent = "新增资金事件";
   eventSubmitBtn.textContent = "创建事件";
   eventKindSelect.disabled = false;
+  resetEventFormToCreateDefaults();
   eventModal?.classList.add("hidden");
+}
+
+function resetEventFormToCreateDefaults() {
+  eventForm?.reset();
+  recurringFields?.classList.add("hidden");
+  if (eventKindSelect) eventKindSelect.value = "one_time";
+  if (directionSelect) directionSelect.value = "outflow";
+  if (effectiveAtInput) effectiveAtInput.value = toDateTimeLocalValue(new Date());
+  if (dailyStartTimeInput) dailyStartTimeInput.value = "00:01";
+  if (dailyEndTimeInput) dailyEndTimeInput.value = "23:59";
+  weekdayInputs.forEach((input) => {
+    input.checked = true;
+  });
 }
 
 function toDateTimeLocalValue(date) {
@@ -954,6 +968,7 @@ eventForm.addEventListener("submit", async (event) => {
     if (editingEventId != null) {
       const patchPayload = {
         title: payload.title,
+        eventKind: payload.eventKind,
         direction: payload.direction,
         amountYuan: payload.amountYuan,
         effectiveAt: payload.effectiveAt
@@ -964,6 +979,12 @@ eventForm.addEventListener("submit", async (event) => {
         patchPayload.dailyStartTime = payload.dailyStartTime;
         patchPayload.dailyEndTime = payload.dailyEndTime;
         patchPayload.activeWeekdays = payload.activeWeekdays;
+      } else {
+        patchPayload.recurrenceUnit = null;
+        patchPayload.recurrenceInterval = null;
+        patchPayload.dailyStartTime = null;
+        patchPayload.dailyEndTime = null;
+        patchPayload.activeWeekdays = null;
       }
       await patchEvent(editingEventId, patchPayload);
       setStatus("事件已更新", "success");
@@ -976,17 +997,6 @@ eventForm.addEventListener("submit", async (event) => {
     if (shouldAutoSwitchHomeAfterEventSave()) {
       switchPanel("homePanel");
     }
-    eventForm.reset();
-    recurringFields.classList.add("hidden");
-    eventKindSelect.value = "one_time";
-    eventKindSelect.disabled = false;
-    editingEventKind = null;
-    effectiveAtInput.value = toDateTimeLocalValue(new Date());
-    dailyStartTimeInput.value = "00:01";
-    dailyEndTimeInput.value = "23:59";
-    weekdayInputs.forEach((input) => {
-      input.checked = true;
-    });
   } catch (error) {
     setStatus(error.message, "error");
   }
