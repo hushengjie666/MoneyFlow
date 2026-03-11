@@ -47,7 +47,7 @@ body::-webkit-scrollbar {
 
 .widget-status {
   color: var(--widget-muted);
-  font-size: 0.72rem;
+  font-size: 0.67rem;
   white-space: nowrap;
 }
 
@@ -74,7 +74,7 @@ body::-webkit-scrollbar {
   box-shadow:
     0 18px 32px rgba(3, 8, 20, 0.4),
     inset 0 1px 0 rgba(255, 255, 255, 0.18);
-  padding: 10px 10px 11px;
+  padding: 9px 8px 9px;
   overflow: hidden;
 }
 
@@ -92,22 +92,23 @@ body::-webkit-scrollbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 .jump-chip {
   display: inline-flex;
-  padding: 3px 8px;
+  padding: 2px 6px;
   border-radius: 999px;
   border: 1px solid #375788;
-  font-size: 0.71rem;
+  font-size: 0.64rem;
   color: #a9c5f5;
   background: rgba(27, 52, 95, 0.35);
+  white-space: nowrap;
 }
 
 .jump-delta {
-  margin-top: 5px;
-  font-size: 1.16rem;
+  margin-top: 4px;
+  font-size: 1.02rem;
   font-weight: 700;
   color: #9bb0d6;
   animation: widget-delta-pulse 1.6s ease-in-out infinite;
@@ -148,7 +149,7 @@ body::-webkit-scrollbar {
 }
 
 .jump-stair {
-  margin-top: 6px;
+  margin-top: 5px;
   min-height: 24px;
   display: grid;
   grid-template-columns: repeat(14, minmax(0, 1fr));
@@ -218,27 +219,27 @@ body::-webkit-scrollbar {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-top: 6px;
-  gap: 10px;
+  margin-top: 5px;
+  gap: 8px;
 }
 
 .jump-header {
-  font-size: 0.78rem;
+  font-size: 0.73rem;
   color: var(--widget-muted);
   white-space: nowrap;
 }
 
 .jump-current-inline {
-  font-size: 1.32rem;
+  font-size: 1.18rem;
   font-weight: 760;
   white-space: nowrap;
   line-height: 1;
 }
 
 .jump-time {
-  margin-top: 5px;
+  margin-top: 4px;
   color: var(--widget-muted);
-  font-size: 0.7rem;
+  font-size: 0.64rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

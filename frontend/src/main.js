@@ -12,6 +12,7 @@ import {
   submitHelpFeedback
 } from "./api-client.js";
 import { startBalancePolling } from "./balance-engine.js";
+import { filterRecentEvents } from "./event-visibility.js";
 import { formatEtaDuration, formatJumpByUnit, formatYuan, formatYuanDynamic, jumpUnitLabel } from "./formatters.js";
 import { estimateGoalEtaBySchedule } from "./goal-eta.js";
 import { resolveJumpDisplayDeltaByUnit } from "./jump-flow.js";
@@ -40,6 +41,7 @@ const directionSelect = document.getElementById("direction");
 const titleInput = document.getElementById("title");
 const dailyStartTimeInput = document.getElementById("dailyStartTime");
 const dailyEndTimeInput = document.getElementById("dailyEndTime");
+const recurrenceEndAtInput = document.getElementById("recurrenceEndAt");
 const weekdayInputs = Array.from(document.querySelectorAll('input[name="activeWeekdays"]'));
 const effectiveAtInput = document.getElementById("effectiveAt");
 const eventSubmitBtn = document.getElementById("eventSubmitBtn");
@@ -50,6 +52,7 @@ const jumpStair = document.getElementById("jumpStair");
 const jumpTimestamp = document.getElementById("jumpTimestamp");
 const eventModal = document.getElementById("eventModal");
 const openEventModalBtn = document.getElementById("openEventModalBtn");
+const openEventModalBtnRecent = document.getElementById("openEventModalBtnRecent");
 const closeEventModalBtn = document.getElementById("closeEventModalBtn");
 const goalForm = document.getElementById("goalForm");
 const goalTargetBalanceInput = document.getElementById("goalTargetBalanceYuan");
@@ -62,6 +65,7 @@ const menuButtons = Array.from(document.querySelectorAll(".menu-btn"));
 const panelPages = Array.from(document.querySelectorAll(".panel-page"));
 const clearLocalDataBtn = document.getElementById("clearLocalDataBtn");
 const showSystemEventsToggle = document.getElementById("showSystemEventsToggle");
+const recentEventKindFilter = document.getElementById("recentEventKindFilter");
 const autoSwitchHomeAfterEventSaveToggle = document.getElementById("autoSwitchHomeAfterEventSaveToggle");
 const widgetShowOnTrayMain = document.getElementById("widgetShowOnTrayMain");
 const widgetTopmostMain = document.getElementById("widgetTopmostMain");
@@ -84,6 +88,7 @@ const STAIR_STEP_COUNT = 14;
 const JUMP_UNIT_STORAGE_KEY = "moneyflow.ui.jumpUnit";
 const SHOW_SYSTEM_EVENTS_STORAGE_KEY = "moneyflow.ui.showSystemEvents";
 const AUTO_SWITCH_HOME_AFTER_EVENT_SAVE_STORAGE_KEY = "moneyflow.ui.autoSwitchHomeAfterEventSave";
+const RECENT_EVENT_KIND_FILTER_STORAGE_KEY = "moneyflow.ui.recentEventKindFilter";
 const JUMP_UNIT_SECONDS = {
   second: 1,
   minute: 60,
@@ -280,6 +285,35 @@ function saveAutoSwitchHomeAfterEventSave(value) {
   }
 }
 
+function getSavedRecentEventKindFilter() {
+  try {
+    const stored = localStorage.getItem(RECENT_EVENT_KIND_FILTER_STORAGE_KEY);
+    if (stored === "one_time" || stored === "recurring") return stored;
+  } catch {
+    // ignore local storage failures
+  }
+  return "all";
+}
+
+function saveRecentEventKindFilter(value) {
+  try {
+    localStorage.setItem(RECENT_EVENT_KIND_FILTER_STORAGE_KEY, value);
+  } catch {
+    // ignore local storage failures
+  }
+}
+
+function normalizeRecentEventKindFilter(value) {
+  if (value === "one_time" || value === "recurring") return value;
+  return "all";
+}
+
+function defaultRecurringEndAtValue(baseDate = new Date()) {
+  const next = new Date(baseDate.getTime());
+  next.setMonth(next.getMonth() + 12);
+  return toDateTimeLocalValue(next);
+}
+
 function applyJumpUnit(unit) {
   currentJumpUnit = Object.hasOwn(JUMP_UNIT_SECONDS, unit) ? unit : "second";
   if (jumpUnitSelect) jumpUnitSelect.value = currentJumpUnit;
@@ -387,7 +421,9 @@ function resetEventFormToCreateDefaults() {
   recurringFields?.classList.add("hidden");
   if (eventKindSelect) eventKindSelect.value = "one_time";
   if (directionSelect) directionSelect.value = "outflow";
-  if (effectiveAtInput) effectiveAtInput.value = toDateTimeLocalValue(new Date());
+  const base = new Date();
+  if (effectiveAtInput) effectiveAtInput.value = toDateTimeLocalValue(base);
+  if (recurrenceEndAtInput) recurrenceEndAtInput.value = defaultRecurringEndAtValue(base);
   if (dailyStartTimeInput) dailyStartTimeInput.value = "00:01";
   if (dailyEndTimeInput) dailyEndTimeInput.value = "23:59";
   weekdayInputs.forEach((input) => {
@@ -441,13 +477,47 @@ function formatEventSchedule(event) {
   if (event.eventKind === "one_time") {
     return new Date(event.effectiveAt).toLocaleString("zh-CN", { hour12: false });
   }
-  const weekdays = Array.isArray(event.activeWeekdays) ? event.activeWeekdays : [1, 2, 3, 4, 5, 6, 7];
-  const dayText = weekdays
+  const recurring = formatRecurringScheduleParts(event);
+  return `${recurring.timeRange} · ${recurring.dayText} · ${recurring.endText}`;
+}
+
+function normalizeActiveWeekdays(activeWeekdays) {
+  const normalized = (Array.isArray(activeWeekdays) ? activeWeekdays : [1, 2, 3, 4, 5, 6, 7])
+    .map((day) => Number(day))
     .filter((day) => Number.isInteger(day) && day >= 1 && day <= 7)
-    .sort((a, b) => a - b)
-    .map((day) => `周${WEEKDAY_LABEL[day]}`)
-    .join("、");
-  return `${event.dailyStartTime ?? "00:01"} - ${event.dailyEndTime ?? "23:59"} · ${dayText || "周一至周日"}`;
+    .sort((a, b) => a - b);
+  return Array.from(new Set(normalized));
+}
+
+function formatWeekdayText(activeWeekdays) {
+  const weekdays = normalizeActiveWeekdays(activeWeekdays);
+  if (!weekdays.length) return "周一至周日";
+  if (weekdays.length === 7) return "周一至周日";
+
+  let isContinuous = true;
+  for (let i = 1; i < weekdays.length; i += 1) {
+    if (weekdays[i] !== weekdays[i - 1] + 1) {
+      isContinuous = false;
+      break;
+    }
+  }
+
+  if (isContinuous && weekdays.length >= 2) {
+    return `周${WEEKDAY_LABEL[weekdays[0]]}至周${WEEKDAY_LABEL[weekdays[weekdays.length - 1]]}`;
+  }
+
+  return weekdays.map((day) => `周${WEEKDAY_LABEL[day]}`).join("、");
+}
+
+function formatRecurringScheduleParts(event) {
+  const endLabel = event.recurrenceEndAt
+    ? new Date(event.recurrenceEndAt).toLocaleString("zh-CN", { hour12: false })
+    : "长期";
+  return {
+    timeRange: `${event.dailyStartTime ?? "00:01"} - ${event.dailyEndTime ?? "23:59"}`,
+    dayText: formatWeekdayText(event.activeWeekdays),
+    endText: `至 ${endLabel}`
+  };
 }
 
 function formatStatusLabel(status) {
@@ -459,6 +529,10 @@ function formatStatusLabel(status) {
 
 function formatTypeBadge(event) {
   if (event.eventKind === "one_time") return "一次性";
+  return "周期性";
+}
+
+function formatRecurringCycleBadge(event) {
   const unit = RECURRENCE_UNIT_LABEL[event.recurrenceUnit] ?? event.recurrenceUnit ?? "月";
   const interval = Number(event.recurrenceInterval ?? 1);
   return `每${interval}${unit}`;
@@ -586,11 +660,20 @@ function handleEditEvent(event) {
     recurrenceIntervalInput.value = Number(event.recurrenceInterval ?? 1);
     dailyStartTimeInput.value = event.dailyStartTime ?? "00:01";
     dailyEndTimeInput.value = event.dailyEndTime ?? "23:59";
+    if (recurrenceEndAtInput) {
+      const fallback = defaultRecurringEndAtValue(new Date(event.effectiveAt));
+      recurrenceEndAtInput.value = event.recurrenceEndAt
+        ? toDateTimeLocalValue(new Date(event.recurrenceEndAt))
+        : fallback;
+    }
     const selected = new Set(Array.isArray(event.activeWeekdays) ? event.activeWeekdays : [1, 2, 3, 4, 5, 6, 7]);
     weekdayInputs.forEach((input) => {
       input.checked = selected.has(Number(input.value));
     });
   } else {
+    if (recurrenceEndAtInput) {
+      recurrenceEndAtInput.value = defaultRecurringEndAtValue(new Date(event.effectiveAt));
+    }
     weekdayInputs.forEach((input) => {
       input.checked = true;
     });
@@ -622,18 +705,45 @@ function renderEventItem(event) {
 
   const typeBadge = document.createElement("span");
   typeBadge.className = "event-type-badge";
+  typeBadge.dataset.kind = event.eventKind;
   typeBadge.textContent = formatTypeBadge(event);
+  meta.append(typeBadge);
+
+  if (event.eventKind === "recurring") {
+    const cycleBadge = document.createElement("span");
+    cycleBadge.className = "event-cycle-badge";
+    cycleBadge.textContent = formatRecurringCycleBadge(event);
+    meta.append(cycleBadge);
+  }
 
   const metaLine = document.createElement("div");
   metaLine.className = "event-meta-line";
-  metaLine.textContent = formatEventSchedule(event);
+  if (event.eventKind === "recurring") {
+    metaLine.classList.add("is-recurring");
+    const schedule = formatRecurringScheduleParts(event);
+    const timeChip = document.createElement("span");
+    timeChip.className = "event-meta-chip event-meta-chip-time";
+    timeChip.textContent = schedule.timeRange;
+
+    const dayChip = document.createElement("span");
+    dayChip.className = "event-meta-chip event-meta-chip-days";
+    dayChip.textContent = schedule.dayText;
+
+    const endChip = document.createElement("span");
+    endChip.className = "event-meta-chip event-meta-chip-end";
+    endChip.textContent = schedule.endText;
+
+    metaLine.append(timeChip, dayChip, endChip);
+  } else {
+    metaLine.textContent = formatEventSchedule(event);
+  }
 
   const statusBadge = document.createElement("span");
   statusBadge.className = "event-status-badge";
   statusBadge.dataset.status = event.status;
   statusBadge.textContent = formatStatusLabel(event.status);
 
-  meta.append(typeBadge, statusBadge);
+  meta.append(statusBadge);
   content.append(head, meta, metaLine);
 
   const actions = document.createElement("div");
@@ -671,14 +781,15 @@ function renderEventItem(event) {
 function renderEventList(events) {
   eventList.innerHTML = "";
 
-  const visibleEvents = shouldShowSystemEvents()
-    ? events
-    : events.filter((event) => !String(event?.title ?? "").includes("（历史结转）"));
+  const visibleBySystem = filterRecentEvents(events, shouldShowSystemEvents());
+  const kindFilter = normalizeRecentEventKindFilter(recentEventKindFilter?.value);
+  const visibleEvents =
+    kindFilter === "all" ? visibleBySystem : visibleBySystem.filter((event) => event.eventKind === kindFilter);
 
   if (!visibleEvents.length) {
     const empty = document.createElement("li");
     empty.className = "event-row";
-    empty.textContent = "暂无可显示事件，请前往首页点击“快捷新增事件”开始记录。";
+    empty.textContent = "暂无可显示事件，请点击上方“快捷新增事件”开始记录。";
     eventList.appendChild(empty);
     return;
   }
@@ -743,6 +854,7 @@ menuButtons.forEach((btn) => {
 });
 
 openEventModalBtn?.addEventListener("click", openEventModal);
+openEventModalBtnRecent?.addEventListener("click", openEventModal);
 closeEventModalBtn?.addEventListener("click", closeEventModal);
 eventModal?.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -816,6 +928,7 @@ clearLocalDataBtn?.addEventListener("click", async () => {
       localStorage.removeItem(JUMP_UNIT_STORAGE_KEY);
       localStorage.removeItem(SHOW_SYSTEM_EVENTS_STORAGE_KEY);
       localStorage.removeItem(AUTO_SWITCH_HOME_AFTER_EVENT_SAVE_STORAGE_KEY);
+      localStorage.removeItem(RECENT_EVENT_KIND_FILTER_STORAGE_KEY);
     } catch {
       // ignore local storage failures
     }
@@ -825,6 +938,9 @@ clearLocalDataBtn?.addEventListener("click", async () => {
     }
     if (autoSwitchHomeAfterEventSaveToggle) {
       autoSwitchHomeAfterEventSaveToggle.checked = shouldAutoSwitchHomeAfterEventSave();
+    }
+    if (recentEventKindFilter) {
+      recentEventKindFilter.value = getSavedRecentEventKindFilter();
     }
     currentGoalTarget = null;
     goalCompletionNotifiedFor = null;
@@ -875,6 +991,13 @@ showSystemEventsToggle?.addEventListener("change", () => {
   setStatus(nextValue ? "已显示系统自动事件" : "已隐藏系统自动事件", "success");
 });
 
+recentEventKindFilter?.addEventListener("change", () => {
+  const nextValue = normalizeRecentEventKindFilter(recentEventKindFilter.value);
+  recentEventKindFilter.value = nextValue;
+  saveRecentEventKindFilter(nextValue);
+  renderEventList(cachedEvents);
+});
+
 autoSwitchHomeAfterEventSaveToggle?.addEventListener("change", () => {
   const nextValue = Boolean(autoSwitchHomeAfterEventSaveToggle.checked);
   saveAutoSwitchHomeAfterEventSave(nextValue);
@@ -917,6 +1040,19 @@ appHeadDrag?.addEventListener("mousedown", async (event) => {
 eventKindSelect.addEventListener("change", () => {
   const isRecurring = eventKindSelect.value === "recurring";
   recurringFields.classList.toggle("hidden", !isRecurring);
+  if (isRecurring && recurrenceEndAtInput && !String(recurrenceEndAtInput.value ?? "").trim()) {
+    const base = effectiveAtInput?.value ? new Date(effectiveAtInput.value) : new Date();
+    recurrenceEndAtInput.value = defaultRecurringEndAtValue(base);
+  }
+});
+
+effectiveAtInput?.addEventListener("change", () => {
+  if (eventKindSelect?.value !== "recurring") return;
+  if (!recurrenceEndAtInput) return;
+  const start = Date.parse(String(effectiveAtInput.value ?? ""));
+  const end = Date.parse(String(recurrenceEndAtInput.value ?? ""));
+  if (!Number.isFinite(start) || Number.isFinite(end) && end > start) return;
+  recurrenceEndAtInput.value = defaultRecurringEndAtValue(new Date(start));
 });
 
 titleInput?.addEventListener("input", () => {
@@ -953,6 +1089,13 @@ eventForm.addEventListener("submit", async (event) => {
     payload.recurrenceInterval = Number(formData.get("recurrenceInterval"));
     payload.dailyStartTime = String(formData.get("dailyStartTime") || "00:01");
     payload.dailyEndTime = String(formData.get("dailyEndTime") || "23:59");
+    payload.recurrenceEndAt = normalizeDateTimeLocal(
+      String(formData.get("recurrenceEndAt") || defaultRecurringEndAtValue(new Date(payload.effectiveAt)))
+    );
+    if (Date.parse(payload.recurrenceEndAt) <= Date.parse(payload.effectiveAt)) {
+      setStatus("周期结束时间必须晚于生效时间", "error");
+      return;
+    }
     payload.activeWeekdays = formData
       .getAll("activeWeekdays")
       .map((day) => Number(day))
@@ -978,12 +1121,14 @@ eventForm.addEventListener("submit", async (event) => {
         patchPayload.recurrenceInterval = payload.recurrenceInterval;
         patchPayload.dailyStartTime = payload.dailyStartTime;
         patchPayload.dailyEndTime = payload.dailyEndTime;
+        patchPayload.recurrenceEndAt = payload.recurrenceEndAt;
         patchPayload.activeWeekdays = payload.activeWeekdays;
       } else {
         patchPayload.recurrenceUnit = null;
         patchPayload.recurrenceInterval = null;
         patchPayload.dailyStartTime = null;
         patchPayload.dailyEndTime = null;
+        patchPayload.recurrenceEndAt = null;
         patchPayload.activeWeekdays = null;
       }
       await patchEvent(editingEventId, patchPayload);
@@ -1040,8 +1185,12 @@ async function init() {
   requestTopFrameLayoutSync();
   initJumpStair();
   applyJumpUnit(getSavedJumpUnit());
+  resetEventFormToCreateDefaults();
   helpContactStage?.classList.remove("hidden");
   setHelpFeedbackStatus("");
+  if (recentEventKindFilter) {
+    recentEventKindFilter.value = getSavedRecentEventKindFilter();
+  }
   if (showSystemEventsToggle) {
     showSystemEventsToggle.checked = shouldShowSystemEvents();
   }

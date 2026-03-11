@@ -82,9 +82,17 @@ export function formatEventSummary(event) {
 export function formatEtaDuration(totalSeconds) {
   const seconds = Math.max(0, Math.floor(Number(totalSeconds ?? 0)));
   const day = Math.floor(seconds / 86400);
+  const year = Math.floor(day / 360);
+  const afterYearDays = day - year * 360;
+  const month = Math.floor(afterYearDays / 30);
+  const afterMonthDays = afterYearDays - month * 30;
   const hour = Math.floor((seconds % 86400) / 3600);
   const minute = Math.floor((seconds % 3600) / 60);
 
+  if (year >= 1 && month === 0 && afterMonthDays === 0) return `${year}年`;
+  if (year >= 1) return `${year}年 ${month}个月 ${afterMonthDays}天`;
+  if (month >= 1 && afterMonthDays === 0) return `${month}个月`;
+  if (month >= 1) return `${month}个月 ${afterMonthDays}天`;
   if (day > 0) return `${day}天 ${hour}小时`;
   if (hour > 0) return `${hour}小时 ${minute}分钟`;
   return `${Math.max(1, minute)}分钟`;

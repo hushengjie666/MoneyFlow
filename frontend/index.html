@@ -228,6 +228,20 @@
 
       <section id="recentPanel" class="panel-page">
         <section class="panel">
+          <div class="recent-toolbar">
+            <button id="openEventModalBtnRecent" class="quick-event-btn recent-quick-event-btn" type="button">
+              <span class="quick-event-btn-icon" aria-hidden="true">+</span>
+              <span>快捷新增事件</span>
+            </button>
+            <label class="recent-filter-field" for="recentEventKindFilter">
+              <span class="recent-filter-label">事件类型</span>
+              <select id="recentEventKindFilter" name="recentEventKindFilter">
+                <option value="all">全部</option>
+                <option value="one_time">一次性</option>
+                <option value="recurring">周期性</option>
+              </select>
+            </label>
+          </div>
           <ul id="eventList" class="event-list"></ul>
         </section>
       </section>
@@ -347,6 +361,10 @@
             <div>
               <label for="dailyEndTime">每日结束时间</label>
               <input id="dailyEndTime" name="dailyEndTime" type="time" value="23:59" />
+            </div>
+            <div class="recurrence-end-field">
+              <label for="recurrenceEndAt">周期结束时间</label>
+              <input id="recurrenceEndAt" name="recurrenceEndAt" type="datetime-local" />
             </div>
             <div class="weekdays-field">
               <label>生效日（周一到周日）</label>

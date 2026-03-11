@@ -126,4 +126,25 @@ describe("frontend api recurring continuity", () => {
     expect(fiveDayTick.flowPerSecondYuan * 3600).toBeGreaterThan(sevenDayTick.flowPerSecondYuan * 3600);
     expect(fiveDayTick.flowPerSecondYuan * 86400).toBeGreaterThan(sevenDayTick.flowPerSecondYuan * 86400);
   });
+
+  it("stops recurring contribution after recurrence end time", async () => {
+    const start = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+    const end = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    await createEvent({
+      title: "临时补贴",
+      eventKind: "recurring",
+      direction: "inflow",
+      amountYuan: 3000,
+      effectiveAt: start.toISOString(),
+      recurrenceUnit: "month",
+      recurrenceInterval: 1,
+      dailyStartTime: "00:01",
+      dailyEndTime: "23:59",
+      recurrenceEndAt: end.toISOString(),
+      activeWeekdays: [1, 2, 3, 4, 5, 6, 7]
+    });
+
+    const tick = await getRealtimeBalance();
+    expect(tick.flowPerSecondYuan).toBe(0);
+  });
 });

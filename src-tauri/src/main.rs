@@ -7,6 +7,7 @@ use preference_store::{load_preferences, save_preferences, WidgetPreferenceProfi
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use single_instance::SingleInstance;
 use std::time::Duration;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuEvent, MenuItem, PredefinedMenuItem};
@@ -323,6 +324,12 @@ fn apply_app_icons(app: &tauri::App) -> Result<(), String> {
 }
 
 fn main() {
+    let single = SingleInstance::new("moneyflow-desktop-single-instance")
+        .expect("failed to create single-instance guard");
+    if !single.is_single() {
+        return;
+    }
+
     tauri::Builder::default()
         .setup(|app| {
             ensure_widget_window(&app.handle())?;

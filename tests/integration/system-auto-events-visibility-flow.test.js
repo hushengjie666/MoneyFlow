@@ -13,6 +13,6 @@ describe("system auto events visibility flow", () => {
     expect(js).toContain("SHOW_SYSTEM_EVENTS_STORAGE_KEY");
     expect(js).toContain("if (stored === null) return false;");
     expect(js).toContain("showSystemEventsToggle?.addEventListener");
-    expect(js).toContain("includes(\"（历史结转）\")");
+    expect(js).toContain("filterRecentEvents(events, shouldShowSystemEvents())");
   });
 });

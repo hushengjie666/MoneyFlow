@@ -80,4 +80,18 @@ describe("settings and modal safety flow", () => {
     expect(js).toContain("patchPayload.recurrenceInterval = null;");
     expect(js).toContain("patchPayload.activeWeekdays = null;");
   });
+
+  it("supports recurring end-time field in event form and submit payload", () => {
+    const htmlPath = path.resolve("frontend/index.html");
+    const html = fs.readFileSync(htmlPath, "utf8");
+    const jsPath = path.resolve("frontend/src/main.js");
+    const js = fs.readFileSync(jsPath, "utf8");
+
+    expect(html).toContain('id="recurrenceEndAt"');
+    expect(html).toContain('class="recurrence-end-field"');
+    expect(js).toContain("payload.recurrenceEndAt = normalizeDateTimeLocal");
+    expect(js).toContain("next.setMonth(next.getMonth() + 12);");
+    expect(js).toContain("周期结束时间必须晚于生效时间");
+    expect(js).toContain("patchPayload.recurrenceEndAt = payload.recurrenceEndAt;");
+  });
 });

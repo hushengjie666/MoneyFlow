@@ -10,6 +10,9 @@ use tauri::WebviewWindowBuilder;
 
 pub const WIDGET_LABEL: &str = "widget";
 const MAIN_LABEL: &str = "main";
+const WIDGET_WIDTH: f64 = 248.0;
+const WIDGET_HEIGHT_EXPANDED: f64 = 146.0;
+const WIDGET_HEIGHT_COLLAPSED: f64 = 64.0;
 
 fn should_show_widget_when_main_hidden(startup_mode: &str, allow_simultaneous_display: bool) -> bool {
     startup_mode == "auto" || allow_simultaneous_display
@@ -74,7 +77,7 @@ pub fn ensure_widget_window(app: &AppHandle) -> Result<(), String> {
         .shadow(false)
         .always_on_top(false)
         .visible(false)
-        .inner_size(296.0, 156.0)
+        .inner_size(WIDGET_WIDTH, WIDGET_HEIGHT_EXPANDED)
         .build()
         .map_err(|error| format!("create widget window failed: {error}"))?;
 
@@ -224,9 +227,9 @@ pub fn normalized_position(x: f64, y: f64) -> (f64, f64) {
 
 pub fn collapsed_window_size(collapsed: bool) -> (f64, f64) {
     if collapsed {
-        (296.0, 64.0)
+        (WIDGET_WIDTH, WIDGET_HEIGHT_COLLAPSED)
     } else {
-        (296.0, 156.0)
+        (WIDGET_WIDTH, WIDGET_HEIGHT_EXPANDED)
     }
 }
 
@@ -252,7 +255,7 @@ mod tests {
     fn maps_collapsed_window_size() {
         let expanded = collapsed_window_size(false);
         let collapsed = collapsed_window_size(true);
-        assert_eq!(expanded, (296.0, 156.0));
-        assert_eq!(collapsed, (296.0, 64.0));
+        assert_eq!(expanded, (248.0, 146.0));
+        assert_eq!(collapsed, (248.0, 64.0));
     }
 }

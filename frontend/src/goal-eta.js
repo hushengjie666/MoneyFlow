@@ -53,7 +53,11 @@ function normalizeRecurringEventFlow(event) {
   if (event.eventKind !== "recurring" || event.status !== "active") return null;
   const amount = Number(event.amountYuan);
   const effectiveEpoch = toEpochSeconds(event.effectiveAt);
+  const recurrenceEndEpoch = event.recurrenceEndAt ? toEpochSeconds(event.recurrenceEndAt) : null;
   if (!Number.isFinite(amount) || !Number.isFinite(effectiveEpoch)) return null;
+  if (recurrenceEndEpoch != null && (!Number.isFinite(recurrenceEndEpoch) || recurrenceEndEpoch <= effectiveEpoch)) {
+    return null;
+  }
   const startSec = parseDailyTimeToSeconds(event.dailyStartTime ?? "00:01", false) ?? 60;
   const endSec = parseDailyTimeToSeconds(event.dailyEndTime ?? "24:00", true) ?? DAY_SECONDS;
   if (endSec <= startSec) return null;
@@ -72,6 +76,7 @@ function normalizeRecurringEventFlow(event) {
   const sign = event.direction === "inflow" ? 1 : -1;
   return {
     effectiveEpoch,
+    recurrenceEndEpoch,
     startSec,
     endSec,
     weekdaySet,
@@ -124,6 +129,7 @@ export function estimateGoalEtaBySchedule(currentBalanceYuan, targetBalanceYuan,
 
       for (const flow of recurringFlows) {
         if (flow.effectiveEpoch > segMidEpoch) continue;
+        if (flow.recurrenceEndEpoch != null && segMidEpoch >= flow.recurrenceEndEpoch) continue;
         if (segMid < flow.startSec || segMid >= flow.endSec) continue;
         const weekday = isoWeekdayFromDayIndex(dayIndex);
         if (!flow.weekdaySet.has(weekday)) continue;

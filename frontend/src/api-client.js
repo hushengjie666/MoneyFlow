@@ -43,6 +43,13 @@ function toEpochSeconds(iso) {
   return Math.floor(new Date(iso).getTime() / SECOND_MS);
 }
 
+function toEpochSecondsOrNull(iso) {
+  if (iso == null || iso === "") return null;
+  const parsed = Date.parse(iso);
+  if (Number.isNaN(parsed)) return null;
+  return Math.floor(parsed / SECOND_MS);
+}
+
 function periodSeconds(unit, interval) {
   if (unit === "day") return DAY_SECONDS * interval;
   if (unit === "week") return DAY_SECONDS * 7 * interval;
@@ -155,6 +162,11 @@ function recurringContribution(event, nowSec) {
   if (event.status !== "active") return 0;
   const eventSec = toEpochSeconds(event.effectiveAt);
   if (eventSec > nowSec) return 0;
+  const recurrenceEndSec = toEpochSecondsOrNull(event.recurrenceEndAt);
+  if (recurrenceEndSec != null && eventSec >= recurrenceEndSec) return 0;
+  if (recurrenceEndSec != null && nowSec >= recurrenceEndSec) {
+    nowSec = recurrenceEndSec;
+  }
 
   const { startSec: dailyStartSec, endSec: dailyEndSec } = getDailyWindow(event);
   const weekdaySet = parseActiveWeekdays(event);
@@ -221,6 +233,7 @@ function buildSettlementEvent(previous, accrued, nowIso, id) {
     recurrenceInterval: null,
     dailyStartTime: null,
     dailyEndTime: null,
+    recurrenceEndAt: null,
     activeWeekdays: null,
     status: "active",
     createdAt: nowIso,
@@ -250,12 +263,14 @@ function computeBalanceTick({ initialBalanceYuan, events, now = new Date() }) {
       if (event.status !== "active") continue;
       const eventSec = toEpochSeconds(event.effectiveAt);
       if (eventSec > nowSec) continue;
+      const recurrenceEndSec = toEpochSecondsOrNull(event.recurrenceEndAt);
+      if (recurrenceEndSec != null && eventSec >= recurrenceEndSec) continue;
       const delta = recurringContribution(event, nowSec);
       total = roundMoney(total + delta);
       const { startSec, endSec } = getDailyWindow(event);
       const weekdaySet = parseActiveWeekdays(event);
       const activeSecondsPerPeriod = computeActiveSecondsPerPeriod(event, startSec, endSec, weekdaySet);
-      if (isInDailyWindow(nowSec, startSec, endSec, weekdaySet)) {
+      if ((recurrenceEndSec == null || nowSec < recurrenceEndSec) && isInDailyWindow(nowSec, startSec, endSec, weekdaySet)) {
         recurringCount += 1;
         flowPerSecondYuan += (event.amountYuan * eventSign(event.direction)) / activeSecondsPerPeriod;
       }
@@ -427,6 +442,7 @@ function validateCreatePayload(payload) {
       payload.recurrenceInterval != null ||
       payload.dailyStartTime != null ||
       payload.dailyEndTime != null ||
+      payload.recurrenceEndAt != null ||
       payload.activeWeekdays != null
     ) {
       fail("one_time event must not include recurrence fields");
@@ -441,6 +457,12 @@ function validateCreatePayload(payload) {
   const start = payload.dailyStartTime ?? "00:01";
   const end = payload.dailyEndTime ?? "24:00";
   validateDailyWindow(start, end);
+  if (payload.recurrenceEndAt != null) {
+    const endAtMs = Date.parse(payload.recurrenceEndAt);
+    const startAtMs = Date.parse(payload.effectiveAt);
+    if (Number.isNaN(endAtMs)) fail("recurrenceEndAt must be ISO datetime");
+    if (endAtMs <= startAtMs) fail("recurrenceEndAt must be later than effectiveAt");
+  }
   const weekdays = payload.activeWeekdays ?? [1, 2, 3, 4, 5, 6, 7];
   if (!Array.isArray(weekdays) || weekdays.length === 0) fail("activeWeekdays must contain at least one weekday");
   for (const day of weekdays) {
@@ -456,7 +478,8 @@ function normalizeRecurringFields(payload) {
       recurrenceUnit: null,
       recurrenceInterval: null,
       dailyStartTime: null,
-      dailyEndTime: null
+      dailyEndTime: null,
+      recurrenceEndAt: null
     };
   }
   return {
@@ -464,6 +487,7 @@ function normalizeRecurringFields(payload) {
     recurrenceInterval: payload.recurrenceInterval,
     dailyStartTime: payload.dailyStartTime ?? "00:01",
     dailyEndTime: payload.dailyEndTime ?? "24:00",
+    recurrenceEndAt: payload.recurrenceEndAt ?? null,
     activeWeekdays: Array.isArray(payload.activeWeekdays) && payload.activeWeekdays.length ? payload.activeWeekdays : [1, 2, 3, 4, 5, 6, 7]
   };
 }
@@ -512,6 +536,7 @@ export async function putSnapshot(initialBalanceYuan) {
       recurrenceInterval: null,
       dailyStartTime: null,
       dailyEndTime: null,
+      recurrenceEndAt: null,
       activeWeekdays: null,
       status: "active",
       createdAt: nowIso,
@@ -554,6 +579,7 @@ export async function createEvent(payload) {
     recurrenceInterval: recurringFields.recurrenceInterval,
     dailyStartTime: recurringFields.dailyStartTime,
     dailyEndTime: recurringFields.dailyEndTime,
+    recurrenceEndAt: recurringFields.recurrenceEndAt,
     activeWeekdays: recurringFields.activeWeekdays,
     status: "active",
     createdAt: now,
@@ -615,7 +641,8 @@ export async function patchEvent(id, patchPayload) {
     recurrenceUnit: merged.recurrenceUnit,
     recurrenceInterval: merged.recurrenceInterval,
     dailyStartTime: merged.dailyStartTime,
-    dailyEndTime: merged.dailyEndTime
+    dailyEndTime: merged.dailyEndTime,
+    recurrenceEndAt: merged.recurrenceEndAt
   };
   if (merged.eventKind === "recurring") {
     validationPayload.activeWeekdays = merged.activeWeekdays;
